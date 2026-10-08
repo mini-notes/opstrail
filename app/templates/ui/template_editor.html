@@ -1,0 +1,102 @@
+{% extends "ui/base.html" %}
+{% set active = 'template' %}
+{% block title %}Template Teams · OpsTrail{% endblock %}
+{% block content %}
+<h1>Template MS Teams</h1>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<div class="good">
+  <b>Alert không bao giờ bị chặn vì template.</b> Hai lớp bảo vệ:
+  lúc <b>lưu</b> template được render thử — JSON sai thì không lưu được;
+  lúc <b>gửi</b> nếu template vẫn hỏng với một alert cụ thể, OpsTrail
+  <b>tự dùng template mặc định</b> và ghi lý do vào bảng notifications.
+</div>
+
+<p class="note">
+  Đang dùng: <b>{{ 'template tuỳ chỉnh (lưu trong DB)' if using_custom else 'template mặc định (file trong image)' }}</b>.
+  Cú pháp Jinja2, xuất thẳng JSON Adaptive Card. Mọi giá trị phải đi qua
+  <code>| tojson</code> — đừng viết <code>{{ '{{ value }}' }}</code> trần bên trong chuỗi JSON.
+</p>
+
+<section class="card">
+  <h2>Biến dùng được</h2>
+  <table class="grid">
+    <tr><td class="mono">alert</td><td>Toàn bộ bản ghi: <code>alertname</code>, <code>severity</code>, <code>summary</code>, <code>description</code>, <code>labels</code>, <code>annotations</code>, <code>starts_at</code>, <code>ends_at</code>…</td></tr>
+    <tr><td class="mono">service · team</td><td>Tên hiển thị, rỗng nếu alert chưa gán nhãn</td></tr>
+    <tr><td class="mono">severity · status</td><td>Đã chuẩn hoá: CRITICAL / ERROR / WARNING / INFO · FIRING / RESOLVED</td></tr>
+    <tr><td class="mono">icon · status_icon</td><td>Emoji tương ứng</td></tr>
+    <tr><td class="mono">facts</td><td>Danh sách <code>(tiêu đề, giá trị)</code> đã lọc bỏ trường rỗng</td></tr>
+    <tr><td class="mono">owners</td><td>Tên người phụ trách (luôn có nếu đã gán, kể cả khi không mention)</td></tr>
+    <tr><td class="mono">mention_entities</td><td>Khối <code>msteams.entities</code>. <b>Rỗng</b> nếu chưa đạt ngưỡng severity hoặc chưa có owner</td></tr>
+    <tr><td class="mono">mention_text</td><td>Chuỗi <code>&lt;at&gt;Tên&lt;/at&gt;</code> khớp với entities. Rỗng khi không mention</td></tr>
+    <tr><td class="mono">generator_url</td><td>Link đồ thị Prometheus</td></tr>
+    <tr><td class="mono">detail_url</td><td>Link trang chi tiết trong OpsTrail</td></tr>
+    <tr><td class="mono">runbook_url · dashboard_url</td><td>Lấy từ annotation <code>runbook_url</code> / <code>dashboard_url</code></td></tr>
+    <tr><td class="mono">silence_url</td><td>Link tạo silence trong Alertmanager, dựng từ <code>external_url</code></td></tr>
+  </table>
+  <p class="hint">
+    Mention chỉ hiển thị được trong <code>TextBlock</code> và <code>FactSet</code> —
+    đặt <code>mention_text</code> vào chỗ khác thì Teams hiện ra chữ
+    <code>&lt;at&gt;…&lt;/at&gt;</code> thô.
+  </p>
+</section>
+
+<form method="post" action="/settings/template/save">
+  <section class="card">
+    <h2>Nội dung template</h2>
+    <textarea name="body" id="body" rows="22" spellcheck="false"
+              style="width:100%;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace"
+              {{ 'readonly' if not can_edit }}>{{ source }}</textarea>
+    {% if can_edit %}
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+      <button type="submit" formaction="/settings/template/preview" class="secondary">Xem trước</button>
+      <button type="submit">Lưu</button>
+      {% if using_custom %}
+      <button type="submit" formaction="/settings/template/reset" class="danger"
+              formnovalidate
+              onclick="return confirm('Xoá template tuỳ chỉnh và quay về mặc định?')">
+        Về mặc định
+      </button>
+      {% endif %}
+      <span class="muted small">Lưu sẽ render thử trước; JSON sai thì không lưu.</span>
+    </div>
+    {% else %}
+    <p class="hint">Vai trò của bạn là chỉ đọc. Sửa template cần <em>editor</em>.</p>
+    {% endif %}
+  </section>
+</form>
+
+<section class="card">
+  <h2>Kết quả render</h2>
+  {% if preview_error %}
+    <p class="error">{{ preview_error }}</p>
+  {% else %}
+    <p class="note">
+      Đang render với <b>{{ 'alert mẫu đầy đủ' if use_sample else 'alert thật gần nhất' }}</b>.
+      {% if use_sample %}
+        <a href="/settings/template">← Dùng alert thật</a>
+      {% else %}
+        <a href="/settings/template?sample=1">Dùng alert mẫu đầy đủ →</a>
+      {% endif %}
+    </p>
+    {% if not has_value and not use_sample %}
+    <p class="note" style="color:var(--warn)">
+      Alert gần nhất của bạn <b>không có</b> annotation <code>value</code> /
+      <code>threshold</code>, nên card không có dòng số đo. Prometheus không tự
+      gửi giá trị metric. Thêm vào alerting rule:
+      <code>value: '{{ '{{ printf "%.1f" $value }}' }}%'</code> và
+      <code>threshold: "85%"</code> — chi tiết ở <code>docs/alertmanager.md</code>.
+      Bấm "Dùng alert mẫu đầy đủ" để xem card khi đã có.
+    </p>
+    {% endif %}
+    <p class="note">
+      Copy JSON dưới đây dán vào
+      <a href="https://adaptivecards.io/designer" target="_blank" rel="noopener noreferrer">Adaptive Cards Designer</a>
+      để xem hình thật trước khi gửi lên Teams.
+    </p>
+    <pre style="max-height:420px;overflow:auto"><code>{{ preview }}</code></pre>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "ui/base.html" %}
+{% set active = 'teams' %}
+{% block title %}Teams · OpsTrail{% endblock %}
+{% block content %}
+<h1>Teams</h1>
+<p class="note">
+  Matched against the alert's <code>team</code> / <code>squad</code> /
+  <code>owner</code> labels, and inherited by any service that belongs to the
+  team. A team with its own Power Automate URL receives its alerts in its own
+  Teams channel instead of the global one.
+</p>
+
+{% if can_edit %}
+<section class="card">
+  <h2>Add team</h2>
+  <form method="post" action="/labels/teams" class="adminform">
+    <label>Key <input name="key" required autocomplete="off" placeholder="payments"></label>
+    <label>Display name <input name="name" autocomplete="off" placeholder="Payments Team"></label>
+    <label class="wide">Power Automate URL <span class="muted">(optional — blank uses the global one)</span>
+      <input name="msteams_webhook_url" autocomplete="off" placeholder="https://prod-00.westus.logic.azure.com/..."></label>
+    <button type="submit" class="wide">Create team</button>
+  </form>
+</section>
+{% endif %}
+
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ q or '' }}" placeholder="Search teams">
+  <button type="submit">Search</button>
+  <a class="link" href="/labels/teams">Reset</a>
+</form>
+
+<table class="grid">
+  <thead><tr>{% with key='key', label='Key' %}{% include "ui/_sorth.html" %}{% endwith %}{% with key='name', label='Name' %}{% include "ui/_sorth.html" %}{% endwith %}{% with key='services', label='Services' %}{% include "ui/_sorth.html" %}{% endwith %}{% with key='alerts', label='Alerts' %}{% include "ui/_sorth.html" %}{% endwith %}
+    <th>Owner</th><th>Mention từ</th><th>Teams channel</th>{% if can_edit %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for t in page_obj.items %}
+    <tr>
+      <td class="mono"><strong>{{ t.key }}</strong></td>
+      <td>{{ t.name }}</td>
+      <td class="mono">{{ service_counts.get(t.id, 0) }}</td>
+      <td class="mono">{{ counts.get(t.id, 0) }}</td>
+      <td class="small">
+        {% for o, role in owners_by_team.get(t.id, []) %}
+          <span class="tag {{ 'payload' if role == 'primary' else 'none' }}">{{ o.name }}</span>
+          {% if can_edit %}<form method="post" action="/labels/owners/unassign/team/{{ t.id }}/{{ o.id }}" class="inline"><button class="link" type="submit" title="Bỏ gán">×</button></form>{% endif %}
+        {% else %}<span class="muted">—</span>{% endfor %}
+        {% if can_edit and all_owners %}
+        <form method="post" action="/labels/owners/assign/team/{{ t.id }}" class="inline" style="margin-top:4px">
+          <select name="owner_id" required style="max-width:130px">
+            <option value="">+ owner</option>
+            {% for ow in all_owners %}<option value="{{ ow.id }}">{{ ow.name }}</option>{% endfor %}
+          </select>
+          <select name="role">{% for r in owner_roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
+          <button class="secondary" type="submit">Gán</button>
+        </form>
+        {% endif %}
+      </td>
+      <td class="small">
+        {% if can_edit %}
+        <form method="post" action="/labels/teams/{{ t.id }}/threshold" class="inline">
+          <select name="mention_severity" onchange="this.form.submit()">
+            <option value="" {{ 'selected' if not t.mention_severity }}>mặc định</option>
+            {% for sv in ['critical','error','warning','info'] %}
+              <option value="{{ sv }}" {{ 'selected' if t.mention_severity == sv }}>{{ sv }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% else %}{{ t.mention_severity or 'mặc định' }}{% endif %}
+      </td>
+
+      <td>
+        {% if can_edit %}
+        <form method="post" action="/labels/teams/{{ t.id }}/webhook" class="inline">
+          <input name="msteams_webhook_url" value="{{ t.msteams_webhook_url or '' }}"
+                 placeholder="global default" style="min-width:200px">
+          <button class="secondary" type="submit">Save</button>
+        </form>
+        {% else %}
+          <span class="pill {{ 'sent' if t.msteams_webhook_url else '' }}">{{ 'custom' if t.msteams_webhook_url else 'global' }}</span>
+        {% endif %}
+      </td>
+      {% if can_edit %}
+      <td>
+        <form method="post" action="/labels/teams/{{ t.id }}/delete" class="inline"
+              onsubmit="return confirm('Delete team {{ t.key }}?\n\n{{ counts.get(t.id, 0) }} alert(s) and {{ service_counts.get(t.id, 0) }} service(s) will lose this team.\nLabel rules pointing at it will be DELETED (cascade).')">
+          <button class="danger" type="submit">Delete</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="empty">Chưa có team nào.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "ui/_pager.html" %}
+{% endblock %}

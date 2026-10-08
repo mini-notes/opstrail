@@ -1,0 +1,329 @@
+/* ---------------------------------------------------------------------------
+   Theme tokens.
+
+   Light is the base so a browser with no JS and no dark preference still gets
+   a readable page. Dark is applied two ways: explicitly via data-theme="dark"
+   (the user chose it) and implicitly via prefers-color-scheme, guarded by
+   :not([data-theme="light"]) so an explicit light choice beats the OS.
+
+   Badge backgrounds are alpha tints of their own colour, so they work on both
+   surfaces; the text colours below are darkened for light mode where the
+   dark-mode value would fail contrast on white.
+--------------------------------------------------------------------------- */
+:root{
+  --bg:#ffffff; --panel:#f6f8fa; --panel-2:#eef1f4; --grid:#d8dee4;
+  --ink:#1f2328; --dim:#636c76;
+  --accent:#0969da; --good:#1a7f37; --warn:#9a6700; --bad:#cf222e;
+  --sev-critical:#cf222e; --sev-error:#bc4c00; --sev-warning:#9a6700;
+  --sev-info:#0969da; --sev-unknown:#636c76;
+  --tint:12%; --shadow:0 8px 24px rgba(31,35,40,.12);
+  --radius:8px;
+}
+:root[data-theme="dark"]{
+  --bg:#0d1117; --panel:#161b22; --panel-2:#1f252d; --grid:#2a2f36;
+  --ink:#c9d1d9; --dim:#8b949e;
+  --accent:#4f8cff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+  --sev-critical:#f85149; --sev-error:#fb8f44; --sev-warning:#d29922;
+  --sev-info:#4f8cff; --sev-unknown:#8b949e;
+  --tint:20%; --shadow:0 8px 24px rgba(1,4,9,.6);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1117; --panel:#161b22; --panel-2:#1f252d; --grid:#2a2f36;
+    --ink:#c9d1d9; --dim:#8b949e;
+    --accent:#4f8cff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+    --sev-critical:#f85149; --sev-error:#fb8f44; --sev-warning:#d29922;
+    --sev-info:#4f8cff; --sev-unknown:#8b949e;
+    --tint:20%; --shadow:0 8px 24px rgba(1,4,9,.6);
+  }
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  transition:background-color .15s ease,color .15s ease}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{background:var(--panel-2);padding:1px 5px;border-radius:4px;font-size:.9em}
+h1{font-size:22px;margin:0 0 16px}
+h2{font-size:15px;margin:0 0 12px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+h3{font-size:14px;margin:18px 0 8px}
+.muted{color:var(--dim)}
+.small{font-size:12px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.lead{font-size:16px;margin:0 0 6px}
+.error{color:var(--bad);background:color-mix(in srgb,var(--bad) var(--tint),transparent);
+  border:1px solid var(--bad);padding:8px 12px;border-radius:var(--radius)}
+.ok{color:var(--good);background:color-mix(in srgb,var(--good) var(--tint),transparent);
+  border:1px solid var(--good);padding:8px 12px;border-radius:var(--radius)}
+.hint{color:var(--dim);font-size:12px;margin-top:10px}
+
+/* ---------------------------------------------------------------------------
+   App shell: fixed sidebar + scrolling content.
+
+   The collapsed state lives on <html data-sidebar="collapsed">, set in <head>
+   before first paint, so the grid is already the right width on the very
+   first frame instead of snapping after JS runs.
+--------------------------------------------------------------------------- */
+:root{ --side-w:208px; --side-w-collapsed:56px; }
+
+body.app{display:grid;grid-template-columns:var(--side-w) 1fr;min-height:100vh}
+:root[data-sidebar="collapsed"] body.app{grid-template-columns:var(--side-w-collapsed) 1fr}
+
+.side{background:var(--panel);border-right:1px solid var(--grid);
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+  overflow:hidden;transition:width .18s ease}
+.side-head{display:flex;align-items:center;gap:8px;height:52px;padding:0 10px 0 14px;
+  border-bottom:1px solid var(--grid)}
+.side-head .brand{flex:1;font-weight:700;color:var(--ink)!important;
+  letter-spacing:-.02em;white-space:nowrap;overflow:hidden}
+.side-toggle svg{transition:transform .18s ease}
+:root[data-sidebar="collapsed"] .side-toggle svg{transform:rotate(180deg)}
+
+.side-nav{display:flex;flex-direction:column;gap:1px;padding:10px 8px;overflow-y:auto}
+.side-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--dim);padding:12px 8px 4px;white-space:nowrap}
+.side-nav a{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:6px;
+  color:var(--dim);font-size:13px;white-space:nowrap;overflow:hidden}
+.side-nav a svg{width:16px;height:16px;flex:none}
+.side-nav a:hover{background:var(--panel-2);color:var(--ink);text-decoration:none}
+.side-nav a.on{background:color-mix(in srgb,var(--accent) var(--tint),transparent);
+  color:var(--accent);font-weight:600}
+.side-badge{margin-left:auto;font-style:normal;font-size:10px;font-weight:700;
+  padding:1px 6px;border-radius:999px;
+  background:color-mix(in srgb,var(--warn) var(--tint),transparent);color:var(--warn)}
+
+/* Collapsed: icons only. Labels and the brand are hidden rather than
+   removed so the DOM (and screen-reader order) stays identical. */
+:root[data-sidebar="collapsed"] .side-nav a span,
+:root[data-sidebar="collapsed"] .side-nav a .side-badge,
+:root[data-sidebar="collapsed"] .side-label,
+:root[data-sidebar="collapsed"] .side-head .brand{display:none}
+:root[data-sidebar="collapsed"] .side-nav a{justify-content:center;padding:8px}
+:root[data-sidebar="collapsed"] .side-head{padding:0;justify-content:center}
+
+.shell{display:flex;flex-direction:column;min-width:0}
+.topbar{display:flex;align-items:center;gap:10px;height:52px;padding:0 20px;
+  background:var(--panel);border-bottom:1px solid var(--grid);
+  position:sticky;top:0;z-index:40}
+.burger{display:none}
+.side-scrim{display:none}
+
+@media (max-width:860px){
+  body.app{grid-template-columns:1fr}
+  .side{position:fixed;left:0;top:0;width:var(--side-w);z-index:60;
+    transform:translateX(-100%);transition:transform .2s ease}
+  :root[data-drawer="open"] .side{transform:none}
+  :root[data-sidebar="collapsed"] .side{width:var(--side-w)}
+  :root[data-sidebar="collapsed"] .side-nav a span,
+  :root[data-sidebar="collapsed"] .side-label,
+  :root[data-sidebar="collapsed"] .side-head .brand{display:revert}
+  :root[data-sidebar="collapsed"] .side-nav a{justify-content:flex-start;padding:7px 8px}
+  .burger{display:grid}
+  .side-toggle{display:none}
+  .side-scrim{display:block;position:fixed;inset:0;z-index:55;
+    background:rgba(0,0,0,.45)}
+}
+@media (prefers-reduced-motion: reduce){
+  .side,.side-toggle svg{transition:none}
+}
+
+.spacer{flex:1}
+.icon-btn{display:grid;place-items:center;width:30px;height:30px;padding:0;
+  background:transparent;border:1px solid transparent;border-radius:6px;
+  color:var(--dim);cursor:pointer}
+.icon-btn:hover{color:var(--ink);background:var(--panel-2);border-color:var(--grid)}
+
+/* account dropdown */
+.account{position:relative}
+.account{margin-left:auto}
+.account summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;
+  padding:4px 8px 4px 4px;border:1px solid var(--grid);border-radius:999px;
+  background:var(--bg);transition:border-color .15s ease}
+.account summary::-webkit-details-marker{display:none}
+.account summary:hover{border-color:var(--accent)}
+.account[open] summary{border-color:var(--accent)}
+.avatar{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:11px;font-weight:700}
+.uname{font-size:13px}
+.chev{color:var(--dim);transition:transform .18s ease}
+.account[open] .chev{transform:rotate(180deg)}
+.role-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  padding:1px 7px;border-radius:999px}
+.role-admin{background:color-mix(in srgb,var(--accent) var(--tint),transparent);color:var(--accent)}
+.role-editor{background:color-mix(in srgb,var(--good) var(--tint),transparent);color:var(--good)}
+.role-viewer{background:color-mix(in srgb,var(--dim) var(--tint),transparent);color:var(--dim)}
+
+.account .menu{position:absolute;right:0;top:calc(100% + 8px);min-width:244px;z-index:50;
+  background:var(--panel);border:1px solid var(--grid);border-radius:10px;
+  box-shadow:var(--shadow);padding:6px;
+  animation:menu-in .14s ease}
+@keyframes menu-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){
+  .account .menu{animation:none}
+  .chev{transition:none}
+  body{transition:none}
+}
+.menu-head{padding:8px 10px 10px;border-bottom:1px solid var(--grid);
+  display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.menu-section{padding:4px 10px 8px}
+.menu-label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--dim);margin-bottom:6px}
+.theme-switch{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.theme-switch button{padding:5px 2px;font-size:11px;border-radius:6px;cursor:pointer;
+  background:var(--bg);border:1px solid var(--grid);color:var(--dim)}
+.theme-switch button:hover{color:var(--ink)}
+.theme-switch button.on{background:color-mix(in srgb,var(--accent) var(--tint),transparent);
+  border-color:var(--accent);color:var(--accent);font-weight:600}
+/* `.menu .menu-item` not `.menu-item`: the generic `button[type=submit]` rule
+   below is more specific than a single class, so a plain `.menu-item` loses and
+   Sign out renders as a blue primary button inside the dropdown. */
+.menu .menu-item{display:block;width:100%;text-align:left;padding:8px 10px;
+  border-radius:6px;background:none;border:0;color:var(--ink);font:inherit;
+  font-weight:400;cursor:pointer}
+.menu .menu-item:hover{background:var(--panel-2);text-decoration:none}
+.menu .menu-item.danger{color:var(--bad)}
+.menu .menu-item.danger:hover{background:color-mix(in srgb,var(--bad) var(--tint),transparent)}
+.account form{margin:0}
+
+.wrap{max-width:1280px;margin:0 auto;padding:24px}
+
+/* login */
+.login{max-width:340px;margin:12vh auto;background:var(--panel);
+  border:1px solid var(--grid);border-radius:var(--radius);padding:28px;box-shadow:var(--shadow)}
+.login h1{margin-bottom:2px}
+.login p.muted{margin-top:0}
+.login label{display:block;margin:14px 0;font-size:13px;color:var(--dim)}
+.login input{display:block;width:100%;margin-top:5px}
+.login button[type=submit]{width:100%;margin-top:8px}
+
+input,select,button,textarea{background:var(--bg);color:var(--ink);border:1px solid var(--grid);
+  border-radius:6px;padding:7px 10px;font:inherit}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+button[type=submit]{background:var(--accent);border-color:var(--accent);color:#fff;
+  cursor:pointer;font-weight:500}
+button[type=submit]:hover{filter:brightness(1.08)}
+button.secondary{background:var(--bg);color:var(--ink);cursor:pointer}
+button.secondary:hover{background:var(--panel-2)}
+button.link{background:none;border:0;color:var(--accent);cursor:pointer;font:inherit;
+  font-size:13px;padding:0}
+.link{color:var(--accent);font-size:13px}
+
+/* filters */
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.filters input[type=search]{min-width:220px}
+.filters .busy{opacity:0;transition:opacity .15s ease;font-size:12px;color:var(--dim)}
+.htmx-request .filters .busy{opacity:1}
+
+/* table */
+.grid{width:100%;border-collapse:collapse;background:var(--panel);
+  border:1px solid var(--grid);border-radius:var(--radius);overflow:hidden}
+.grid th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--dim);padding:9px 12px;border-bottom:1px solid var(--grid);font-weight:600}
+.grid td{padding:9px 12px;border-bottom:1px solid var(--grid);vertical-align:top}
+.grid tbody tr:last-child td{border-bottom:0}
+.grid tbody tr[onclick]{cursor:pointer}
+.grid tbody tr[onclick]:hover{background:var(--panel-2)}
+.grid .name{max-width:420px}
+.empty{text-align:center;color:var(--dim);padding:28px}
+.kv{width:100%;border-collapse:collapse}
+.kv th{text-align:left;color:var(--dim);font-weight:500;padding:4px 12px 4px 0;
+  white-space:nowrap;vertical-align:top}
+.kv td{padding:4px 0;word-break:break-word}
+#alertTable{transition:opacity .12s ease}
+#alertTable.htmx-request{opacity:.45}
+
+/* badges */
+.pill,.tag,.sev{display:inline-block;padding:1px 8px;border-radius:999px;
+  font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;
+  white-space:nowrap}
+.pill.firing{background:color-mix(in srgb,var(--bad) var(--tint),transparent);color:var(--bad)}
+.pill.resolved,.pill.sent{background:color-mix(in srgb,var(--good) var(--tint),transparent);color:var(--good)}
+.pill.pending{background:color-mix(in srgb,var(--warn) var(--tint),transparent);color:var(--warn)}
+.pill.failed{background:color-mix(in srgb,var(--bad) var(--tint),transparent);color:var(--bad)}
+.sev-critical{background:color-mix(in srgb,var(--sev-critical) var(--tint),transparent);color:var(--sev-critical)}
+.sev-error{background:color-mix(in srgb,var(--sev-error) var(--tint),transparent);color:var(--sev-error)}
+.sev-warning{background:color-mix(in srgb,var(--sev-warning) var(--tint),transparent);color:var(--sev-warning)}
+.sev-info{background:color-mix(in srgb,var(--sev-info) var(--tint),transparent);color:var(--sev-info)}
+.sev-unknown{background:color-mix(in srgb,var(--sev-unknown) var(--tint),transparent);color:var(--sev-unknown)}
+.tag.payload{background:color-mix(in srgb,var(--good) var(--tint),transparent);color:var(--good)}
+.tag.rule{background:color-mix(in srgb,var(--accent) var(--tint),transparent);color:var(--accent)}
+.tag.manual{background:color-mix(in srgb,#8957e5 var(--tint),transparent);color:#8957e5}
+.tag.none{background:color-mix(in srgb,var(--dim) var(--tint),transparent);color:var(--dim)}
+.inactive{opacity:.5}
+
+.pager{display:flex;gap:16px;align-items:center;margin-top:14px;font-size:13px}
+
+/* cards */
+.card{background:var(--panel);border:1px solid var(--grid);
+  border-radius:var(--radius);padding:18px;margin-bottom:16px}
+.card .grid{border:0;border-radius:0;background:transparent}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:860px){.cols{grid-template-columns:1fr}}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0}
+dt{color:var(--dim)}
+dd{margin:0}
+.relabel{border-top:1px solid var(--grid);margin-top:16px;padding-top:4px}
+.relabel label{display:block;margin:10px 0;font-size:13px;color:var(--dim)}
+.relabel select{display:block;width:100%;margin-top:5px}
+
+/* dashboard */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+@media (max-width:860px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{display:flex;flex-direction:column;gap:2px;background:var(--panel);
+  border:1px solid var(--grid);border-radius:var(--radius);padding:16px 18px;
+  color:var(--ink)!important;text-decoration:none!important}
+a.tile:hover{border-color:var(--accent)}
+.tile .n{font-size:28px;font-weight:600;line-height:1.1}
+.tile .l{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+.tile.warn .n{color:var(--warn)}
+.tile.bad .n{color:var(--bad)}
+.card canvas{max-height:220px}
+.note{font-size:12px;color:var(--dim);margin:-6px 0 12px}
+/* The negative top margin pulls a note up under a heading; after a list it
+   just makes the two collide. */
+ol.note{margin-top:0}
+ol.note + .note,.card ol + .note{margin-top:10px}
+.card ol{font-size:12px;color:var(--dim);line-height:1.7}
+.card ol code{font-size:11px}
+
+/* heatmap */
+.heat{display:grid;grid-template-columns:34px repeat(24,1fr);gap:2px;font-size:10px}
+.heat .hh{color:var(--dim);text-align:center;line-height:1.6}
+.heat .dd{color:var(--dim);line-height:1.6}
+.heat .cell{aspect-ratio:1;border-radius:2px;background:var(--panel-2)}
+
+/* users */
+.userform{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:end}
+@media (max-width:860px){.userform{grid-template-columns:1fr}}
+.userform label{display:block;font-size:12px;color:var(--dim)}
+.userform input,.userform select{display:block;width:100%;margin-top:4px}
+.inline{display:flex;gap:6px;align-items:center;margin:0}
+.inline select,.inline input{padding:4px 8px;font-size:12px}
+.inline button{padding:4px 10px;font-size:12px}
+
+/* labels admin */
+.adminform{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:end}
+@media (max-width:860px){.adminform{grid-template-columns:1fr}}
+.adminform label{display:block;font-size:12px;color:var(--dim)}
+.adminform input,.adminform select{display:block;width:100%;margin-top:4px}
+.cond-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:8px}
+.match-chip{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:11px;background:var(--panel-2);border:1px solid var(--grid);
+  padding:1px 7px;border-radius:4px;margin:1px 3px 1px 0}
+.danger-zone{color:var(--bad)}
+button.danger{background:var(--bg);border-color:var(--bad);color:var(--bad);cursor:pointer}
+button.danger:hover{background:color-mix(in srgb,var(--bad) var(--tint),transparent)}
+.wide{grid-column:1/-1}
+
+/* sortable headers */
+.grid th.sortable{padding:0}
+.grid th.sortable a{display:block;padding:9px 12px;color:var(--dim);
+  font:inherit;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  font-weight:600;white-space:nowrap}
+.grid th.sortable a:hover{color:var(--ink);background:var(--panel-2);text-decoration:none}
+.grid th.sorted a{color:var(--accent)}
+.grid th .arrow{opacity:.45;margin-left:3px;font-size:10px}
+.grid th.sorted .arrow{opacity:1}
+.pagesize{margin-left:auto;font-size:12px;color:var(--dim)}
+.pagesize select{padding:3px 6px;font-size:12px;margin-left:4px}

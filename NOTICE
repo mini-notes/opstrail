@@ -1,0 +1,20 @@
+OpsTrail
+Copyright (c) 2026 OpsTrail contributors
+
+Licensed under the MIT License; see LICENSE.
+
+--------------------------------------------------------------------------
+Bundled third-party assets
+--------------------------------------------------------------------------
+
+The admin UI vendors its JavaScript rather than loading it from a CDN, so an
+air-gapped install renders correctly. These files are unmodified upstream
+builds and remain under their own licenses:
+
+  app/static/vendor/htmx.min.js
+      htmx 2.0.4 — https://htmx.org — Zero-Clause BSD
+
+  app/static/vendor/chart.umd.min.js
+      Chart.js 4.4.7 — https://www.chartjs.org — MIT License
+
+Refer to each project for the full text of its license.

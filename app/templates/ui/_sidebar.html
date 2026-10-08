@@ -1,0 +1,66 @@
+{# Sidebar nav. Collapsed state is applied in <head> (see base.html) so the
+   layout never flashes wide-then-narrow on each navigation. #}
+<aside class="side" id="sidebar">
+  <div class="side-head">
+    <a class="brand" href="/alerts">OpsTrail</a>
+    <button class="icon-btn side-toggle" type="button" id="sideToggle"
+            aria-label="Collapse sidebar" aria-expanded="true" title="Collapse">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 3L5 8l5 5"/>
+      </svg>
+    </button>
+  </div>
+
+  <nav class="side-nav">
+    <span class="side-label">Alerts</span>
+    <a href="/alerts" class="{{ 'on' if active == 'alerts' }}" title="Alerts">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8.5v-3a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0"/></svg>
+      <span>Alerts</span>
+    </a>
+    <a href="/unlabelled" class="{{ 'on' if active == 'unlabelled' }}" title="Unlabelled">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5L1.5 8 8 14.5 14.5 8z"/></svg>
+      <span>Unlabelled</span>
+      {% if unlabelled_count %}<em class="side-badge">{{ unlabelled_count }}</em>{% endif %}
+    </a>
+
+    <span class="side-label">Labels</span>
+    <a href="/labels/services" class="{{ 'on' if active == 'services' }}" title="Services">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="4" rx="1"/><rect x="2" y="10" width="12" height="4" rx="1"/></svg>
+      <span>Services</span>
+    </a>
+    <a href="/labels/teams" class="{{ 'on' if active == 'teams' }}" title="Teams">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5" r="2.5"/><path d="M1.5 14a4.5 4.5 0 0 1 9 0M11 3.2a2.5 2.5 0 0 1 0 4.6M12.5 14a4.5 4.5 0 0 0-1.6-3.4"/></svg>
+      <span>Teams</span>
+    </a>
+    <a href="/labels/rules" class="{{ 'on' if active == 'rules' }}" title="Rules">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h5"/></svg>
+      <span>Rules</span>
+    </a>
+    <a href="/labels/owners" class="{{ 'on' if active == 'owners' }}" title="Owners">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 14a5 5 0 0 1 10 0"/></svg>
+      <span>Owners</span>
+    </a>
+
+    <span class="side-label">Insights</span>
+    <a href="/dashboard" class="{{ 'on' if active == 'dashboard' }}" title="Dashboard">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13V7M6 13V3M10 13V9M14 13V5"/></svg>
+      <span>Dashboard</span>
+    </a>
+
+    <span class="side-label">Settings</span>
+    <a href="/settings/template" class="{{ 'on' if active == 'template' }}" title="Template Teams">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6.5h12"/></svg>
+      <span>Template Teams</span>
+    </a>
+
+    {% if user.role.value == 'admin' %}
+    <span class="side-label">Admin</span>
+    <a href="/users" class="{{ 'on' if active == 'users' }}" title="Users">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 14a5 5 0 0 1 10 0"/></svg>
+      <span>Users</span>
+    </a>
+    {% endif %}
+  </nav>
+</aside>
+<div class="side-scrim" id="sideScrim" hidden></div>

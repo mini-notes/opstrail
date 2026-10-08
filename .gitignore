@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# local dev env (host-scoped URLs)
+.env.local
+
+# runtime data (file storage backend, local experiments)
+data/
+*.log
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/

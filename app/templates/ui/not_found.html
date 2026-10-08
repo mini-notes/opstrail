@@ -1,0 +1,7 @@
+{% extends "ui/base.html" %}
+{% block title %}Not found · OpsTrail{% endblock %}
+{% block content %}
+<h1>Alert #{{ alert_id }} not found</h1>
+<p class="muted">It may have been removed by the retention job.</p>
+<p><a href="/alerts">← Back to alerts</a></p>
+{% endblock %}

@@ -1,0 +1,53 @@
+{# GET form so every filtered view stays a shareable URL -- an operator can
+   paste "all critical payments-api alerts" straight into a ticket.
+
+   hx-trigger on change/input means picking a dropdown reloads just the table.
+   The form still works with JavaScript off: the Filter button does a normal
+   GET and the server renders the full page. #}
+<form class="filters" method="get"
+      hx-get="{{ reset_url }}" hx-target="#alertTable" hx-swap="outerHTML"
+      hx-trigger="change, search, input from:find input[type=search] delay:400ms"
+      hx-push-url="true" hx-indicator="#alertTable">
+  <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Search name or summary">
+  {% if show_attribution %}
+  <select name="service_id">
+    <option value="">All services</option>
+    {% for s in services %}
+      <option value="{{ s.id }}" {{ 'selected' if filters.service_id == s.id }}>{{ s.key }}</option>
+    {% endfor %}
+  </select>
+  <select name="team_id">
+    <option value="">All teams</option>
+    {% for t in teams %}
+      <option value="{{ t.id }}" {{ 'selected' if filters.team_id == t.id }}>{{ t.key }}</option>
+    {% endfor %}
+  </select>
+  <select name="severity">
+    <option value="">Any severity</option>
+    {% for s in ['critical','error','warning','info'] %}
+      <option value="{{ s }}" {{ 'selected' if filters.severity == s }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="alert_status">
+    <option value="">Any status</option>
+    <option value="firing" {{ 'selected' if filters.alert_status == 'firing' }}>firing</option>
+    <option value="resolved" {{ 'selected' if filters.alert_status == 'resolved' }}>resolved</option>
+  </select>
+  <select name="label_source">
+    <option value="">Any label source</option>
+    <option value="payload" {{ 'selected' if filters.label_source == 'payload' }}>payload</option>
+    <option value="rule" {{ 'selected' if filters.label_source == 'rule' }}>rule</option>
+    <option value="manual" {{ 'selected' if filters.label_source == 'manual' }}>manual</option>
+    <option value="none" {{ 'selected' if filters.label_source == 'none' }}>unlabelled</option>
+  </select>
+  {% endif %}
+  <select name="days">
+    <option value="">All time</option>
+    {% for d in [1, 7, 30, 90] %}
+      <option value="{{ d }}" {{ 'selected' if filters.days == d }}>Last {{ d }}d</option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit">Filter</button></noscript>
+  <a class="link" href="{{ reset_url }}">Reset</a>
+  <span class="busy">updating…</span>
+</form>

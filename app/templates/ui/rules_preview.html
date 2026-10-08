@@ -1,0 +1,66 @@
+{% extends "ui/base.html" %}
+{% set active = 'rules' %}
+{% block title %}Apply rules · OpsTrail{% endblock %}
+{% block content %}
+<p><a href="/labels/rules">← Rules</a></p>
+<h1>Apply rules to stored alerts</h1>
+
+<p class="note">
+  Runs the current rules against alerts that have <strong>no label yet</strong>.
+  Computed with the same function intake uses, so what you see below is exactly
+  what will be written — rule priority included. Manually tagged alerts and
+  alerts that already have a label are not touched.
+</p>
+
+<div class="tiles">
+  <span class="tile"><span class="n">{{ preview.unlabelled_total }}</span><span class="l">unlabelled</span></span>
+  <span class="tile {{ 'warn' if preview.matched }}"><span class="n">{{ preview.matched }}</span><span class="l">would be labelled</span></span>
+  <span class="tile"><span class="n">{{ preview.unmatched }}</span><span class="l">still no match</span></span>
+  <span class="tile"><span class="n">{{ preview.groups|length }}</span><span class="l">groups</span></span>
+</div>
+
+{% if preview.truncated %}
+<p class="error">Only the {{ preview.scanned }} most recent unlabelled alerts were
+  examined. Apply, then run this again to continue.</p>
+{% endif %}
+
+{% if preview.groups %}
+<section class="card">
+  <h2>What would change</h2>
+  <table class="grid">
+    <thead><tr><th>Alert</th><th>Service</th><th>Team</th><th>Alerts</th><th>Example</th></tr></thead>
+    <tbody>
+    {% for g in preview.groups %}
+      <tr>
+        <td><strong>{{ g.alertname }}</strong></td>
+        <td>{% if g.service %}<span class="tag rule">{{ g.service }}</span>{% else %}—{% endif %}</td>
+        <td>{% if g.team %}<span class="tag payload">{{ g.team }}</span>{% else %}—{% endif %}</td>
+        <td class="mono">{{ g.count }}</td>
+        <td class="small muted">{{ g.samples[0] if g.samples else '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if can_edit %}
+  <form method="post" action="/labels/rules/backfill" style="margin-top:16px"
+        onsubmit="return confirm('Label {{ preview.matched }} stored alert(s)?\n\nThis changes historical data. Manual labels are not affected.')">
+    <button type="submit">Apply to {{ preview.matched }} alert(s)</button>
+  </form>
+  {% else %}
+  <p class="hint">Your role is read-only. Applying needs <em>editor</em>.</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="card">
+  <p class="empty">
+    {% if preview.unlabelled_total %}
+      No rule matches any of the {{ preview.unlabelled_total }} unlabelled alerts.
+      <a href="/unlabelled">Look at what is waiting</a> and add a rule for it.
+    {% else %}
+      Nothing unlabelled — every stored alert already has a label.
+    {% endif %}
+  </p>
+</section>
+{% endif %}
+{% endblock %}

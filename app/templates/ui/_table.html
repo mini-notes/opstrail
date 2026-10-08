@@ -1,0 +1,41 @@
+<div id="alertTable">
+<table class="grid">
+  <thead><tr>
+    {% with hx = True %}
+    {% with key='status',   label='Status'   %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='severity', label='Severity' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='alert',    label='Alert'    %}{% include "ui/_sorth.html" %}{% endwith %}
+    <th>Service</th><th>Team</th>
+    {% with key='label',    label='Label'    %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='started',  label='Started'  %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='duration', label='Duration' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% endwith %}
+    {% if show_rule_shortcut %}<th></th>{% endif %}
+  </tr></thead>
+  <tbody>
+  {% for a in alerts %}
+    <tr onclick="location='/alerts/{{ a.id }}'">
+      <td><span class="pill {{ a.status.value }}">{{ a.status.value }}</span></td>
+      <td><span class="sev sev-{{ (a.severity or 'unknown')|lower }}">{{ a.severity or '—' }}</span></td>
+      <td class="name">{{ a.alertname or '—' }}<br><span class="muted">{{ a.summary or '' }}</span></td>
+      <td>{{ a.service.key if a.service else '—' }}</td>
+      <td>{{ a.team.key if a.team else '—' }}</td>
+      <td>{% if a.label_source %}<span class="tag {{ a.label_source.value }}">{{ a.label_source.value }}</span>
+          {% else %}<span class="tag none">none</span>{% endif %}</td>
+      <td class="mono">{{ a.starts_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="mono">{% if a.ends_at %}{{ (a.ends_at - a.starts_at)|string|truncate(8, True, '') }}{% else %}—{% endif %}</td>
+      {% if show_rule_shortcut %}
+      <td onclick="event.stopPropagation()">
+        <a class="link" href="/labels/rules?from_alert={{ a.id }}"
+           title="Open the rule builder prefilled with this alert's labels">+ rule</a>
+      </td>
+      {% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="{{ 9 if show_rule_shortcut else 8 }}" class="empty">No alerts match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% with hx = True %}{% include "ui/_pager.html" %}{% endwith %}
+</div>

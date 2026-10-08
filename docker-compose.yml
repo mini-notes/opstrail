@@ -1,0 +1,104 @@
+# OpsTrail dev stack.
+#
+#   postgres      storage
+#   alertmanager  REAL Alertmanager -- the only way to prove the intake
+#                 handles genuine payloads (fingerprint, send_resolved, repeats)
+#   teams-mock    stands in for the Power Automate flow; prints the Adaptive
+#                 Card it receives:  docker compose logs -f teams-mock
+#   opstrail      the app
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: opstrail
+      POSTGRES_USER: opstrail
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opstrail}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opstrail -d opstrail"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  teams-mock:
+    image: mendhak/http-https-echo:36
+    environment:
+      HTTP_PORT: "8080"
+    ports:
+      - "8080:8080"
+
+  # Stand-in for the Entra ID token endpoint so the `entra` auth mode can be
+  # demonstrated without a real tenant. Development only.
+  mock-entra:
+    image: python:3.13-slim
+    command: python /srv/mock_entra.py
+    environment:
+      PORT: "8081"
+      MOCK_CLIENT_ID: ${ENTRA_CLIENT_ID:-mock-client-id}
+      MOCK_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-mock-client-secret}
+    volumes:
+      - ./deploy/mock_entra.py:/srv/mock_entra.py:ro
+    ports:
+      - "8081:8081"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --log.level=info
+    volumes:
+      - ./deploy/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+
+  opstrail:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opstrail:${POSTGRES_PASSWORD:-opstrail}@postgres:5432/opstrail
+      # ⚠️ Hai giá trị dưới là MẶC ĐỊNH CHO DEV và nằm công khai trong repo.
+      # Phải đặt trong .env trước khi chạy ngoài máy cá nhân, nếu không ai
+      # cũng giả được cookie admin và bắn alert giả vào hệ thống.
+      INTAKE_TOKEN: ${INTAKE_TOKEN:-dev-intake-token}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-me}
+      PUBLIC_HOST: ${PUBLIC_HOST:-http://localhost:8000}
+      MSTEAMS_ENABLED: "true"
+      # Point at the mock until you have a real Power Automate flow URL.
+      MSTEAMS_POWER_AUTOMATE_URL: ${MSTEAMS_POWER_AUTOMATE_URL:-http://teams-mock:8080/teams}
+      # Which identifier goes into an Adaptive Card mention: upn | aad.
+      # If a card names the right person but does not notify them, switch this.
+      MSTEAMS_MENTION_ID_FIELD: ${MSTEAMS_MENTION_ID_FIELD:-upn}
+      # Mention owners from this severity upwards when a service/team has not
+      # set its own threshold.
+      MENTION_SEVERITY_DEFAULT: ${MENTION_SEVERITY_DEFAULT:-critical}
+      # Authenticating the call to Power Automate: none | bearer | entra.
+      # Sending a header only protects anything if the FLOW requires it --
+      # see docs/msteams-auth.md.
+      # `${VAR-default}` rather than `${VAR:-default}`: a variable set to the
+      # empty string must stay empty. An empty AUTH_SCHEME means "send the
+      # token with no prefix", and an empty credential should reach the
+      # startup check rather than being quietly replaced by a default.
+      MSTEAMS_AUTH: ${MSTEAMS_AUTH-none}
+      MSTEAMS_AUTH_TOKEN: ${MSTEAMS_AUTH_TOKEN-}
+      MSTEAMS_AUTH_HEADER: ${MSTEAMS_AUTH_HEADER-Authorization}
+      MSTEAMS_AUTH_SCHEME: ${MSTEAMS_AUTH_SCHEME-Bearer}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID-mock-client-id}
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET-mock-client-secret}
+      ENTRA_SCOPE: ${ENTRA_SCOPE-https://service.flow.microsoft.com//.default}
+      # Empty uses the real Entra endpoint. The dev stack points at the mock.
+      ENTRA_TOKEN_URL: ${ENTRA_TOKEN_URL-http://mock-entra:8081/token}
+      OUTBOUND_WEBHOOK_ENABLED: ${OUTBOUND_WEBHOOK_ENABLED:-false}
+      OUTBOUND_WEBHOOK_URL: ${OUTBOUND_WEBHOOK_URL:-http://teams-mock:8080/other}
+      ALERT_RETENTION_MONTHS: ${ALERT_RETENTION_MONTHS:-6}
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:

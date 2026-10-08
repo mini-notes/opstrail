@@ -1,0 +1,23 @@
+# Minimal Alertmanager config that forwards everything to OpsTrail.
+#
+# send_resolved: true is REQUIRED -- without it OpsTrail never learns endsAt
+# and every alert looks like it is still firing.
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: opstrail
+  group_by: ['alertname', 'service']
+  group_wait: 2s          # dev values; use 30s/5m/4h in production
+  group_interval: 10s
+  repeat_interval: 1m     # deliberately short so repeat/UPSERT is exercised
+
+receivers:
+  - name: opstrail
+    webhook_configs:
+      - url: http://opstrail:8000/api/v1/webhooks/alertmanager
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials: dev-intake-token

@@ -1,0 +1,78 @@
+{# Account menu. Built on <details> so it opens without JavaScript; the script
+   below only adds the niceties people expect (click-outside, Escape). #}
+<button class="icon-btn" type="button" onclick="location.reload()" title="Refresh" aria-label="Refresh">
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+    <path d="M14 8a6 6 0 1 1-1.8-4.3M14 2v4h-4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>
+
+<details class="account" id="accountMenu">
+  <summary aria-haspopup="menu">
+    <span class="avatar">{{ user.username[0]|upper }}</span>
+    <span class="uname">{{ user.username }}</span>
+    <span class="role-badge role-{{ user.role.value }}">{{ user.role.value }}</span>
+    <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none"
+         stroke="currentColor" stroke-width="1.6"><path d="M2 4l3 3 3-3" stroke-linecap="round"/></svg>
+  </summary>
+
+  <div class="menu" role="menu">
+    <div class="menu-head">
+      <strong>{{ user.full_name or user.username }}</strong>
+      {% if user.email %}<span class="muted small">{{ user.email }}</span>{% endif %}
+    </div>
+
+    <div class="menu-section">
+      <span class="menu-label">Theme</span>
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button type="button" data-theme-set="light">☀ Light</button>
+        <button type="button" data-theme-set="dark">🌙 Dark</button>
+        <button type="button" data-theme-set="system">🖥 System</button>
+      </div>
+    </div>
+
+    <form method="post" action="/logout">
+      <button class="menu-item danger" type="submit" role="menuitem">Sign out</button>
+    </form>
+  </div>
+</details>
+
+<script>
+(function () {
+  var menu = document.getElementById('accountMenu');
+  if (!menu) return;
+
+  document.addEventListener('click', function (e) {
+    if (menu.open && !menu.contains(e.target)) menu.open = false;
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); }
+  });
+
+  function mark() {
+    var current = null;
+    try { current = localStorage.getItem('opstrail-theme'); } catch (e) {}
+    menu.querySelectorAll('[data-theme-set]').forEach(function (b) {
+      var v = b.getAttribute('data-theme-set');
+      b.classList.toggle('on', v === (current || 'system'));
+    });
+  }
+
+  menu.querySelectorAll('[data-theme-set]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var v = btn.getAttribute('data-theme-set');
+      try {
+        if (v === 'system') { localStorage.removeItem('opstrail-theme'); }
+        else { localStorage.setItem('opstrail-theme', v); }
+      } catch (e) { /* private mode: applies for this page only */ }
+      if (v === 'system') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', v);
+      mark();
+      // Canvas is not CSS: anything already drawn keeps the colours it was
+      // built with. Tell listeners (the dashboard) to redraw, or chart text
+      // stays the old theme's colour and can end up invisible.
+      window.dispatchEvent(new CustomEvent('opstrail:themechange'));
+    });
+  });
+  mark();
+})();
+</script>

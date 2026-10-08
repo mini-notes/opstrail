@@ -1,0 +1,167 @@
+{% extends "ui/base.html" %}
+{% set active = 'rules' %}
+{% block title %}Label rules · OpsTrail{% endblock %}
+{% block content %}
+<h1>Label rules</h1>
+
+{% if request.query_params.get('backfilled') %}
+  <p class="ok">Backfill applied — {{ request.query_params.get('backfilled') }} alert(s) labelled.</p>
+{% endif %}
+
+<section class="card">
+  <h2>How an alert gets its label</h2>
+  <ol class="note" style="margin:0;padding-left:18px">
+    <li><strong>payload</strong> — the alert's own <code>service</code> /
+      <code>app</code> / <code>job</code> / <code>team</code> label matched a
+      Service or Team key. <strong>This wins over rules.</strong></li>
+    <li><strong>rule</strong> — one of the rules below matched. Lowest
+      priority number wins; all conditions in a rule must match.</li>
+    <li>nothing matched → the alert waits on <a href="/unlabelled">Unlabelled</a>.</li>
+  </ol>
+  <p class="note">
+    Rules apply to alerts <em>arriving from now on</em>. Alerts already stored
+    are only relabelled by
+    <a href="/labels/rules/backfill">Apply rules to stored alerts</a> — an alert
+    that already resolved is never re-sent by Alertmanager, so without that it
+    stays unlabelled for ever.
+  </p>
+</section>
+
+{% if can_edit %}
+<section class="card">
+  <h2>New rule</h2>
+  <form method="post" action="/labels/rules" id="ruleForm">
+    <div class="adminform">
+      <label>Priority <span class="muted">(lower wins)</span>
+        <input name="priority" type="number" value="100" min="0" max="10000"></label>
+      <label>Assign service
+        <select name="service_id">
+          <option value="">— none —</option>
+          {% for s in service_list %}<option value="{{ s.id }}">{{ s.key }}</option>{% endfor %}
+        </select></label>
+      <label>Assign team <span class="muted">(blank = inherit from service)</span>
+        <select name="team_id">
+          <option value="">— inherit —</option>
+          {% for t in team_list %}<option value="{{ t.id }}">{{ t.key }}</option>{% endfor %}
+        </select></label>
+      <label>Description <input name="description" autocomplete="off" placeholder="why this rule exists"></label>
+    </div>
+
+    <h3>Conditions <span class="muted">— all must match</span></h3>
+    <p class="note">
+      Values accept wildcards: <code>pg-prod-*</code> matches
+      <code>pg-prod-01</code> and <code>pg-prod-02</code>. <code>?</code>
+      matches one character. Matching ignores case.
+    </p>
+    <div id="conds">
+      {% if prefill %}
+        {% for k, v in prefill.items() %}
+        <div class="cond-row">
+          <input name="match_key" list="labelKeys" value="{{ k }}" placeholder="label key">
+          <input name="match_value" value="{{ v }}" placeholder="value or pg-prod-*">
+          <button type="button" class="secondary" onclick="this.parentNode.remove()">×</button>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="cond-row">
+          <input name="match_key" list="labelKeys" placeholder="label key">
+          <input name="match_value" placeholder="value or pg-prod-*">
+          <button type="button" class="secondary" onclick="this.parentNode.remove()">×</button>
+        </div>
+      {% endif %}
+    </div>
+    <datalist id="labelKeys">
+      {% for k in label_keys %}<option value="{{ k.key }}">{{ k.alerts }} alerts, {{ k.values }} distinct</option>{% endfor %}
+    </datalist>
+    <button type="button" class="secondary" id="addCond">+ Add condition</button>
+    <button type="submit">Create rule</button>
+
+    {% if label_keys %}
+    <p class="hint">Label keys seen in the last 30 days:
+      {% for k in label_keys %}<span class="match-chip">{{ k.key }}</span>{% endfor %}
+    </p>
+    {% else %}
+    <p class="hint">No alerts stored yet, so there are no label keys to suggest.</p>
+    {% endif %}
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Rules <span class="muted">— evaluated in priority order</span></h2>
+  <table class="grid">
+    <thead><tr>{% with key='priority', label='Priority' %}{% include "ui/_sorth.html" %}{% endwith %}<th>Conditions</th><th>Assigns</th><th>Description</th>
+      {% with key='status', label='Status' %}{% include "ui/_sorth.html" %}{% endwith %}{% if can_edit %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in page_obj.items %}
+      <tr class="{{ '' if r.enabled else 'inactive' }}">
+        <td class="mono">{{ r.priority }}</td>
+        <td>{% for k, v in (r.match or {}).items() %}<span class="match-chip">{{ k }}={{ v }}</span>{% endfor %}</td>
+        <td>
+          {% if r.service_id and services.get(r.service_id) %}<span class="tag rule">{{ services[r.service_id].key }}</span>{% endif %}
+          {% if r.team_id and teams.get(r.team_id) %}<span class="tag payload">{{ teams[r.team_id].key }}</span>{% endif %}
+        </td>
+        <td class="small">{{ r.description or '—' }}</td>
+        <td><span class="pill {{ 'sent' if r.enabled else 'failed' }}">{{ 'enabled' if r.enabled else 'disabled' }}</span></td>
+        {% if can_edit %}
+        <td>
+          <form method="post" action="/labels/rules/{{ r.id }}/toggle" class="inline">
+            <button class="secondary" type="submit">{{ 'Disable' if r.enabled else 'Enable' }}</button>
+          </form>
+          <form method="post" action="/labels/rules/{{ r.id }}/delete" class="inline"
+                onsubmit="return confirm('Delete this rule? Alerts it already labelled keep their label.')">
+            <button class="danger" type="submit">Delete</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No rules yet. Alerts without a matching
+        service/team label stay on <a href="/unlabelled">Unlabelled</a>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% include "ui/_pager.html" %}
+  <p style="margin-top:14px">
+    <a class="link" href="/labels/rules/backfill">Apply rules to stored alerts →</a>
+  </p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var add = document.getElementById('addCond');
+  if (!add) return;
+  add.addEventListener('click', function () {
+    var conds = document.getElementById('conds');
+    var row = conds.firstElementChild.cloneNode(true);
+    row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+    row.querySelector('button').onclick = function () { row.remove(); };
+    conds.appendChild(row);
+  });
+
+  // Suggest values for whichever key the operator just typed, so they are
+  // picking from what their alerts actually carry rather than guessing.
+  document.getElementById('conds').addEventListener('change', async function (e) {
+    if (e.target.name !== 'match_key' || !e.target.value) return;
+    var row = e.target.closest('.cond-row');
+    var valueInput = row.querySelector('[name=match_value]');
+    var listId = 'vals-' + Math.random().toString(36).slice(2, 8);
+    try {
+      var res = await fetch('/labels/rules/values?key=' + encodeURIComponent(e.target.value),
+                            {credentials: 'same-origin'});
+      if (!res.ok) return;
+      var data = await res.json();
+      var dl = document.createElement('datalist');
+      dl.id = listId;
+      data.values.forEach(function (v) {
+        var o = document.createElement('option'); o.value = v; dl.appendChild(o);
+      });
+      row.appendChild(dl);
+      valueInput.setAttribute('list', listId);
+    } catch (err) { /* suggestions are a convenience, not a requirement */ }
+  });
+})();
+</script>
+{% endblock %}

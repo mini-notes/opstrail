@@ -1,0 +1,101 @@
+{% extends "ui/base.html" %}
+{% set active = 'alerts' %}
+{% block title %}{{ alert.alertname or 'Alert' }} · OpsTrail{% endblock %}
+{% block content %}
+<p><a href="/alerts">← Alerts</a></p>
+
+<h1>
+  <span class="sev sev-{{ (alert.severity or 'unknown')|lower }}">{{ alert.severity or '—' }}</span>
+  {{ alert.alertname or 'Unnamed alert' }}
+  <span class="pill {{ alert.status.value }}">{{ alert.status.value }}</span>
+</h1>
+{% if alert.summary %}<p class="lead">{{ alert.summary }}</p>{% endif %}
+{% if alert.description %}<p class="muted">{{ alert.description }}</p>{% endif %}
+
+<div class="cols">
+  <section class="card">
+    <h2>Attribution</h2>
+    <dl>
+      <dt>Service</dt><dd>{{ alert.service.name if alert.service else '—' }}</dd>
+      <dt>Team</dt><dd>{{ alert.team.name if alert.team else '—' }}</dd>
+      <dt>Label source</dt>
+      <dd>{% if alert.label_source %}<span class="tag {{ alert.label_source.value }}">{{ alert.label_source.value }}</span>
+          {% else %}<span class="tag none">none</span>{% endif %}</dd>
+    </dl>
+
+    {% if can_edit %}
+    <form method="post" action="/alerts/{{ alert.id }}/label" class="relabel">
+      <h3>Set label by hand</h3>
+      <label>Service
+        <select name="service_id">
+          <option value="">— none —</option>
+          {% for s in services %}
+            <option value="{{ s.id }}" {{ 'selected' if alert.service_id == s.id }}>{{ s.key }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Team <span class="muted">(blank = inherit from service)</span>
+        <select name="team_id">
+          <option value="">— inherit —</option>
+          {% for t in teams %}
+            <option value="{{ t.id }}" {{ 'selected' if alert.team_id == t.id }}>{{ t.key }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Save label</button>
+      <p class="hint">Saved as <code>manual</code>. Alertmanager repeats will not overwrite it.</p>
+    </form>
+    {% else %}
+    <p class="hint">Your role (<em>{{ user.role.value }}</em>) is read-only. Labelling needs <em>editor</em>.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Timing</h2>
+    <dl>
+      <dt>Started</dt><dd class="mono">{{ alert.starts_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</dd>
+      <dt>Ended</dt>
+      <dd class="mono">{{ alert.ends_at.strftime('%Y-%m-%d %H:%M:%S UTC') if alert.ends_at else '— still firing —' }}</dd>
+      <dt>Duration</dt>
+      <dd class="mono">{{ (alert.ends_at - alert.starts_at) if alert.ends_at else '—' }}</dd>
+      <dt>Fingerprint</dt><dd class="mono">{{ alert.fingerprint }}</dd>
+      <dt>Received</dt><dd class="mono">{{ alert.received_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</dd>
+      <dt>Notified</dt><dd>{{ alert.notify_count }}×</dd>
+    </dl>
+    {% if alert.generator_url %}
+      <p><a href="{{ alert.generator_url }}" rel="noopener noreferrer" target="_blank">View in Prometheus →</a></p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Delivery</h2>
+  <table class="grid">
+    <thead><tr><th>Channel</th><th>Status</th><th>Attempts</th><th>HTTP</th><th>Duration</th><th>Target</th><th>Error</th></tr></thead>
+    <tbody>
+    {% for n in notifications %}
+      <tr>
+        <td>{{ n.channel.value }}</td>
+        <td><span class="pill {{ n.status.value }}">{{ n.status.value }}</span></td>
+        <td>{{ n.attempts }}</td>
+        <td class="mono">{{ n.response_status or '—' }}</td>
+        <td class="mono">{{ '%.0f ms'|format(n.duration_ms) if n.duration_ms else '—' }}</td>
+        <td class="mono small">{{ n.target }}</td>
+        <td class="small">{{ n.last_error or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">No delivery attempts recorded.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<div class="cols">
+  <section class="card"><h2>Labels</h2>
+    <table class="kv">{% for k, v in (alert.labels or {})|dictsort %}<tr><th>{{ k }}</th><td class="mono">{{ v }}</td></tr>{% endfor %}</table>
+  </section>
+  <section class="card"><h2>Annotations</h2>
+    <table class="kv">{% for k, v in (alert.annotations or {})|dictsort %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}</table>
+  </section>
+</div>
+{% endblock %}

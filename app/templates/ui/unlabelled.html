@@ -1,0 +1,15 @@
+{% extends "ui/base.html" %}
+{% set active = 'unlabelled' %}
+{% block title %}Unlabelled · OpsTrail{% endblock %}
+{% block content %}
+<h1>Unlabelled alerts</h1>
+<p class="muted">
+  Nothing claimed these: the Prometheus rule carried no <code>service</code>/<code>team</code>
+  label and no <code>label_rules</code> row matched. Each distinct alert name below is either a
+  rule to fix at the source (cheapest) or a mapping to add.
+</p>
+{% with show_attribution = False, reset_url = '/unlabelled' %}
+  {% include "ui/_filters.html" %}
+{% endwith %}
+{% with show_rule_shortcut = True %}{% include "ui/_table.html" %}{% endwith %}
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "ui/base.html" %}
+{% set active = 'alerts' %}
+{% block title %}Alerts · OpsTrail{% endblock %}
+{% block content %}
+<h1>Alerts</h1>
+{% with show_attribution = True, reset_url = '/alerts' %}
+  {% include "ui/_filters.html" %}
+{% endwith %}
+{% include "ui/_table.html" %}
+{% endblock %}

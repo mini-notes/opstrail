@@ -1,0 +1,82 @@
+{% extends "ui/base.html" %}
+{% set active = 'users' %}
+{% block title %}Users · OpsTrail{% endblock %}
+{% block content %}
+<h1>Users</h1>
+<p class="note">
+  {{ admin_count }} active admin{{ '' if admin_count == 1 else 's' }}.
+  OpsTrail refuses any change that would leave zero — recovering from that means
+  shelling into the container to run the CLI.
+</p>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<section class="card">
+  <h2>Add user</h2>
+  <form method="post" action="/users" class="userform">
+    <label>Username <input name="username" required autocomplete="off"></label>
+    <label>Password <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+    <label>Role
+      <select name="role">
+        {% for r in roles %}<option value="{{ r.value }}" {{ 'selected' if r.value == 'viewer' }}>{{ r.value }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Full name <input name="full_name" autocomplete="off"></label>
+    <label>Email <input name="email" type="email" autocomplete="off"></label>
+    <label>UPN <span class="muted">(Entra ID, for Phase 2 Teams mentions)</span>
+      <input name="upn" autocomplete="off"></label>
+    <button type="submit">Create</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>All users</h2>
+  <table class="grid">
+    <thead><tr>
+      {% with key='username', label='User' %}{% include "ui/_sorth.html" %}{% endwith %}<th>Email / UPN</th>{% with key='role', label='Role' %}{% include "ui/_sorth.html" %}{% endwith %}{% with key='status', label='Status' %}{% include "ui/_sorth.html" %}{% endwith %}{% with key='created', label='Created' %}{% include "ui/_sorth.html" %}{% endwith %}<th>Reset password</th>
+    </tr></thead>
+    <tbody>
+    {% for u in page_obj.items %}
+      <tr class="{{ 'inactive' if not u.is_active }}">
+        <td>
+          <strong>{{ u.username }}</strong>{% if u.id == user.id %} <span class="muted small">(you)</span>{% endif %}
+          {% if u.full_name %}<br><span class="muted small">{{ u.full_name }}</span>{% endif %}
+        </td>
+        <td class="small">
+          {{ u.email or '—' }}{% if u.upn %}<br><span class="muted mono">{{ u.upn }}</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/users/{{ u.id }}/role" class="inline">
+            <select name="role" {{ 'disabled' if u.id == user.id }}>
+              {% for r in roles %}<option value="{{ r.value }}" {{ 'selected' if u.role == r }}>{{ r.value }}</option>{% endfor %}
+            </select>
+            {% if u.id != user.id %}<button class="secondary" type="submit">Set</button>{% endif %}
+          </form>
+        </td>
+        <td>
+          <form method="post" action="/users/{{ u.id }}/active" class="inline">
+            <span class="pill {{ 'sent' if u.is_active else 'failed' }}">{{ 'active' if u.is_active else 'disabled' }}</span>
+            {% if u.id != user.id %}
+              <button class="secondary" type="submit">{{ 'Disable' if u.is_active else 'Enable' }}</button>
+            {% endif %}
+          </form>
+        </td>
+        <td class="mono small">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+        <td>
+          <form method="post" action="/users/{{ u.id }}/password" class="inline">
+            <input name="password" type="password" placeholder="New password" minlength="8" required autocomplete="new-password">
+            <button class="secondary" type="submit">Set</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% include "ui/_pager.html" %}
+  <p class="hint">
+    Your own role and status are locked on this page on purpose — a self-demotion
+    cannot be undone with the session that performed it. Ask another admin.
+  </p>
+</section>
+{% endblock %}

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}OpsTrail{% endblock %}</title>
+{# Theme AND sidebar state are applied BEFORE first paint. Doing either at the
+   end of the body makes every navigation flash: white for the theme, a
+   wide-then-narrow jump for the sidebar. #}
+<script>
+(function () {
+  var d = document.documentElement;
+  try {
+    var t = localStorage.getItem('opstrail-theme');
+    if (t === 'light' || t === 'dark') d.setAttribute('data-theme', t);
+    if (localStorage.getItem('opstrail-sidebar') === 'collapsed') {
+      d.setAttribute('data-sidebar', 'collapsed');
+    }
+  } catch (e) { /* private mode: fall back to the defaults */ }
+})();
+</script>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/vendor/htmx.min.js" defer></script>
+{% block head %}{% endblock %}
+</head>
+{# `content` is declared exactly once: Jinja rejects a block name defined
+   twice in one template even when the two are in mutually exclusive
+   branches. The chrome around it is what varies between signed-in pages and
+   the login screen. #}
+<body class="{{ 'app' if user }}">
+{% if user %}{% include "ui/_sidebar.html" %}{% endif %}
+<div class="{{ 'shell' if user }}">
+  {% if user %}
+  <header class="topbar">
+    <button class="icon-btn burger" type="button" id="burger" aria-label="Open menu">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+           stroke-width="1.7" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>
+    </button>
+    <span class="spacer"></span>
+    {% include "ui/_account_menu.html" %}
+  </header>
+  {% endif %}
+  <main class="wrap">{% block content %}{% endblock %}</main>
+</div>
+
+{% if user %}
+<script>
+(function () {
+  var d = document.documentElement;
+  var toggle = document.getElementById('sideToggle');
+  var burger = document.getElementById('burger');
+  var scrim = document.getElementById('sideScrim');
+
+  function collapsed() { return d.getAttribute('data-sidebar') === 'collapsed'; }
+  function sync() {
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', String(!collapsed()));
+      toggle.title = collapsed() ? 'Expand' : 'Collapse';
+    }
+  }
+  if (toggle) {
+    toggle.addEventListener('click', function () {
+      var next = !collapsed();
+      if (next) d.setAttribute('data-sidebar', 'collapsed');
+      else d.removeAttribute('data-sidebar');
+      try { localStorage.setItem('opstrail-sidebar', next ? 'collapsed' : 'expanded'); }
+      catch (e) {}
+      sync();
+    });
+  }
+  sync();
+
+  // Narrow screens: the sidebar becomes an overlay rather than stealing
+  // width from the content.
+  function closeDrawer() { d.removeAttribute('data-drawer'); if (scrim) scrim.hidden = true; }
+  if (burger) {
+    burger.addEventListener('click', function () {
+      d.setAttribute('data-drawer', 'open');
+      if (scrim) scrim.hidden = false;
+    });
+  }
+  if (scrim) scrim.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeDrawer();
+  });
+})();
+</script>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

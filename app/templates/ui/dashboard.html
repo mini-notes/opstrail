@@ -1,0 +1,219 @@
+{% extends "ui/base.html" %}
+{% set active = 'dashboard' %}
+{% block title %}Dashboard · OpsTrail{% endblock %}
+{% block head %}<script src="/static/vendor/chart.umd.min.js" defer></script>{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+{# Plain GET form: the scope stays in the URL so a view can be shared. #}
+<form class="filters" method="get">
+  <select name="service_id" onchange="this.form.submit()">
+    <option value="">All services</option>
+    {% for s in services %}<option value="{{ s.id }}" {{ 'selected' if service_id == s.id }}>{{ s.key }}</option>{% endfor %}
+  </select>
+  <select name="team_id" onchange="this.form.submit()">
+    <option value="">All teams</option>
+    {% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if team_id == t.id }}>{{ t.key }}</option>{% endfor %}
+  </select>
+  <select name="days" onchange="this.form.submit()">
+    {% for d in [7, 30, 90, 180] %}<option value="{{ d }}" {{ 'selected' if days == d }}>Last {{ d }} days</option>{% endfor %}
+  </select>
+  <noscript><button type="submit">Apply</button></noscript>
+  <a class="link" href="/dashboard">Reset</a>
+</form>
+
+<div class="tiles">
+  <a class="tile" href="/alerts?days={{ days }}{{ '&service_id=' ~ service_id if service_id }}{{ '&team_id=' ~ team_id if team_id }}">
+    <span class="n">{{ headline.alerts }}</span><span class="l">alerts</span></a>
+  <a class="tile {{ 'warn' if headline.firing }}" href="/alerts?alert_status=firing">
+    <span class="n">{{ headline.firing }}</span><span class="l">still firing</span></a>
+  <a class="tile {{ 'warn' if headline.unlabelled }}" href="/unlabelled">
+    <span class="n">{{ headline.unlabelled }}</span><span class="l">unlabelled</span></a>
+  <span class="tile {{ 'bad' if headline.failed_notifications }}">
+    <span class="n">{{ headline.failed_notifications }}</span><span class="l">failed deliveries</span></span>
+</div>
+
+<div class="cols">
+  <section class="card"><h2>Alerts per day</h2><canvas id="perDay" height="150"></canvas></section>
+  <section class="card"><h2>Severity</h2><canvas id="sev" height="150"></canvas></section>
+</div>
+
+<div class="cols">
+  <section class="card"><h2>Noisiest alert rules</h2>
+    <p class="note">Occurrences vs notifications sent. A rule with far more notifications
+      than occurrences is flapping — fix its threshold or <code>for:</code> duration.</p>
+    <canvas id="noisy" height="170"></canvas>
+  </section>
+  <section class="card"><h2>How long alerts stay firing</h2>
+    <p class="note"><strong>Not MTTR.</strong> This is how long the alert condition held.
+      A flapping rule splits one outage across many short pairs. Real MTTR needs
+      the <code>incidents</code> table (Phase 2).</p>
+    <canvas id="dur" height="170"></canvas>
+  </section>
+</div>
+
+<div class="cols">
+  <section class="card"><h2>Noisiest services</h2><canvas id="svc" height="150"></canvas></section>
+  <section class="card"><h2>Label coverage</h2>
+    <p class="note">Where attribution came from. <code>none</code> is the backlog of missing rules.</p>
+    <canvas id="cover" height="150"></canvas>
+  </section>
+</div>
+
+<section class="card">
+  <h2>When alerts fire</h2>
+  <p class="note">Weekday × hour (UTC). Darker = more alerts.</p>
+  <div id="heat" class="heat"></div>
+</section>
+
+<section class="card"><h2>Delivery outcome</h2><canvas id="notif" height="120"></canvas></section>
+
+<p id="chartError" class="error" hidden></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.addEventListener('load', async () => {
+  const fail = (msg) => { const el = document.getElementById('chartError'); el.textContent = msg; el.hidden = false; };
+  if (typeof Chart === 'undefined') {
+    return fail('Chart.js failed to load from /static/vendor/ — charts unavailable.');
+  }
+
+  const qs = new URLSearchParams(location.search);
+  qs.set('days', '{{ days }}');
+  let data;
+  try {
+    const res = await fetch('/api/v1/stats/summary?' + qs.toString(), {credentials: 'same-origin'});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
+  } catch (e) { return fail('Could not load statistics: ' + e.message); }
+
+  // Charts bake their colours in at construction time, so switching theme has
+  // to rebuild them. draw() is therefore re-runnable: it disposes whatever is
+  // on each canvas before drawing again.
+  let charts = [];
+  const make = (id, cfg) => {
+    const el = document.getElementById(id);
+    const existing = Chart.getChart(el);
+    if (existing) existing.destroy();
+    charts.push(new Chart(el, cfg));
+  };
+
+  function draw() {
+    charts.forEach(c => c.destroy());
+    charts = [];
+    document.getElementById('heat').innerHTML = '';
+
+  // Read colours from the ACTIVE theme, every time we draw.
+  const css = getComputedStyle(document.documentElement);
+  const v = (n, d) => (css.getPropertyValue(n).trim() || d);
+  const ink = v('--ink', '#c9d1d9'), grid = v('--grid', '#2a2f36'), accent = v('--accent', '#4f8cff');
+  const SEV = {critical:v('--sev-critical','#f85149'), error:v('--sev-error','#fb8f44'),
+               warning:v('--sev-warning','#d29922'), info:v('--sev-info','#4f8cff'),
+               unknown:v('--sev-unknown','#6e7681')};
+  const SRC = {payload:v('--good','#3fb950'), rule:accent, manual:'#8957e5', none:v('--dim','#6e7681')};
+
+  Chart.defaults.color = ink;
+  Chart.defaults.borderColor = grid;
+  const axes = {x:{grid:{color:grid}}, y:{grid:{color:grid}, beginAtZero:true, ticks:{precision:0}}};
+  const bare = {plugins:{legend:{display:false}}, responsive:true, maintainAspectRatio:false};
+
+  make('perDay', {
+    type:'line',
+    data:{labels:data.alerts_per_day.map(d=>d.day),
+          datasets:[{data:data.alerts_per_day.map(d=>d.count), borderColor:accent,
+                     backgroundColor:accent+'33', fill:true, tension:.25, pointRadius:0}]},
+    options:{...bare, scales:axes}});
+
+  make('sev', {
+    type:'doughnut',
+    data:{labels:data.severity.map(d=>d.severity),
+          datasets:[{data:data.severity.map(d=>d.count),
+                     backgroundColor:data.severity.map(d=>SEV[d.severity]||SEV.unknown)}]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right'}}}});
+
+  make('noisy', {
+    type:'bar',
+    data:{labels:data.noisiest.map(d=>d.alertname),
+          datasets:[{label:'occurrences', data:data.noisiest.map(d=>d.occurrences), backgroundColor:accent},
+                    {label:'notifications', data:data.noisiest.map(d=>d.notifications),
+                     backgroundColor:v('--warn','#d29922')}]},
+    options:{responsive:true, maintainAspectRatio:false, indexAxis:'y', scales:axes}});
+
+  make('dur', {
+    type:'bar',
+    data:{labels:data.durations.map(d=>d.service),
+          datasets:[{label:'p50 min', data:data.durations.map(d=>d.p50_min), backgroundColor:accent},
+                    {label:'p90 min', data:data.durations.map(d=>d.p90_min),
+                     backgroundColor:v('--bad','#f85149')}]},
+    options:{responsive:true, maintainAspectRatio:false, indexAxis:'y',
+             scales:{x:{grid:{color:grid}, beginAtZero:true, title:{display:true, text:'minutes'}},
+                     y:{grid:{color:grid}}}}});
+
+  make('svc', {
+    type:'bar',
+    data:{labels:data.top_services.map(d=>d.service),
+          datasets:[{data:data.top_services.map(d=>d.count), backgroundColor:accent}]},
+    options:{...bare, indexAxis:'y', scales:axes}});
+
+  make('cover', {
+    type:'doughnut',
+    data:{labels:data.label_coverage.map(d=>d.source),
+          datasets:[{data:data.label_coverage.map(d=>d.count),
+                     backgroundColor:data.label_coverage.map(d=>SRC[d.source]||SRC.none)}]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right'}}}});
+
+  make('notif', {
+    type:'bar',
+    data:{labels:data.notifications.map(d=>d.channel),
+          datasets:[{label:'sent', data:data.notifications.map(d=>d.sent), backgroundColor:v('--good','#3fb950')},
+                    {label:'pending', data:data.notifications.map(d=>d.pending), backgroundColor:v('--warn','#d29922')},
+                    {label:'failed', data:data.notifications.map(d=>d.failed), backgroundColor:v('--bad','#f85149')}]},
+    options:{responsive:true, maintainAspectRatio:false,
+             scales:{x:{stacked:true, grid:{color:grid}},
+                     y:{stacked:true, grid:{color:grid}, beginAtZero:true, ticks:{precision:0}}}}});
+
+  // Heatmap: a CSS grid, not a chart -- Chart.js has no matrix type built in
+  // and pulling a plugin for one view is not worth the dependency.
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const host = document.getElementById('heat');
+  const max = Math.max(1, ...data.heatmap.map(c => c.count));
+  const byKey = {};
+  data.heatmap.forEach(c => { byKey[c.dow + ':' + c.hour] = c.count; });
+
+  host.appendChild(document.createElement('span'));
+  for (let h = 0; h < 24; h++) {
+    const s = document.createElement('span');
+    s.className = 'hh'; s.textContent = h % 3 === 0 ? h : '';
+    host.appendChild(s);
+  }
+  for (let d = 0; d < 7; d++) {
+    const lab = document.createElement('span');
+    lab.className = 'dd'; lab.textContent = DAYS[d];
+    host.appendChild(lab);
+    for (let h = 0; h < 24; h++) {
+      const n = byKey[d + ':' + h] || 0;
+      const cell = document.createElement('span');
+      cell.className = 'cell';
+      if (n > 0) {
+        // sqrt so a single huge spike does not flatten everything else
+        cell.style.background = accent;
+        cell.style.opacity = (0.15 + 0.85 * Math.sqrt(n / max)).toFixed(3);
+      }
+      cell.title = DAYS[d] + ' ' + String(h).padStart(2, '0') + ':00 — ' + n + ' alert(s)';
+      host.appendChild(cell);
+    }
+  }
+  }  // end draw()
+
+  draw();
+
+  // Redraw when the user picks a theme, and when the OS preference changes
+  // while "System" is selected.
+  window.addEventListener('opstrail:themechange', draw);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (!document.documentElement.getAttribute('data-theme')) draw();
+  });
+});
+</script>
+{% endblock %}

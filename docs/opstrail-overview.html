@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpsTrail — Tổng quan &amp; cơ chế</title>
+<!--
+  File tự chứa: không CDN, không ảnh ngoài, SVG vẽ thẳng trong HTML.
+  Mở được bằng double-click ở máy bất kỳ, gửi email được, in ra PDF được.
+  On-prem thường chặn egress nên mọi thứ phụ thuộc mạng đều là rủi ro.
+-->
+<style>
+:root{
+  --bg:#fff; --panel:#f6f8fa; --panel2:#eef1f4; --grid:#d8dee4;
+  --ink:#1f2328; --dim:#636c76; --accent:#0969da;
+  --good:#1a7f37; --warn:#9a6700; --bad:#cf222e; --violet:#8250df;
+  --radius:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1f252d; --grid:#2a2f36;
+    --ink:#c9d1d9; --dim:#8b949e; --accent:#4f8cff;
+    --good:#3fb950; --warn:#d29922; --bad:#f85149; --violet:#a371f7;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  display:grid;grid-template-columns:238px 1fr}
+a{color:var(--accent)}
+code{background:var(--panel2);padding:1px 6px;border-radius:4px;
+  font:13px ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{background:var(--panel);border:1px solid var(--grid);border-radius:var(--radius);
+  padding:14px 16px;overflow-x:auto;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+pre code{background:none;padding:0}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:22px;margin:48px 0 14px;padding-top:14px;border-top:2px solid var(--grid)}
+h3{font-size:17px;margin:28px 0 10px}
+h4{font-size:14px;margin:20px 0 8px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 12px;padding-left:22px}
+li{margin:4px 0}
+
+nav{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  background:var(--panel);border-right:1px solid var(--grid);padding:22px 16px}
+nav .brand{font-weight:800;font-size:17px;letter-spacing:-.02em;display:block;margin-bottom:4px}
+nav .sub{font-size:11px;color:var(--dim);margin-bottom:18px}
+nav a{display:block;padding:5px 8px;border-radius:6px;color:var(--dim);
+  text-decoration:none;font-size:13px}
+nav a:hover{background:var(--panel2);color:var(--ink)}
+nav .grp{font-size:10px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--dim);margin:16px 0 4px;padding:0 8px;font-weight:700}
+
+main{padding:40px 48px 100px;max-width:960px}
+.lead{font-size:17px;color:var(--dim);margin-bottom:26px}
+
+.card{background:var(--panel);border:1px solid var(--grid);
+  border-radius:var(--radius);padding:18px 20px;margin:16px 0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
+.tile{background:var(--panel);border:1px solid var(--grid);border-radius:var(--radius);padding:14px 16px}
+.tile b{display:block;font-size:24px;line-height:1.2}
+.tile span{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--dim);padding:8px 10px;border-bottom:2px solid var(--grid)}
+td{padding:8px 10px;border-bottom:1px solid var(--grid);vertical-align:top}
+
+.warn{border-left:4px solid var(--warn);background:var(--panel);
+  padding:14px 18px;border-radius:0 var(--radius) var(--radius) 0;margin:16px 0}
+.warn b{color:var(--warn)}
+.bad{border-left:4px solid var(--bad);background:var(--panel);
+  padding:14px 18px;border-radius:0 var(--radius) var(--radius) 0;margin:16px 0}
+.bad b{color:var(--bad)}
+.good{border-left:4px solid var(--good);background:var(--panel);
+  padding:14px 18px;border-radius:0 var(--radius) var(--radius) 0;margin:16px 0}
+.good b{color:var(--good)}
+
+figure{margin:20px 0}
+figcaption{font-size:12px;color:var(--dim);margin-top:8px;text-align:center}
+svg{max-width:100%;height:auto;display:block;margin:0 auto}
+svg text{font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;fill:var(--ink)}
+svg .sm{font-size:10px;fill:var(--dim)}
+svg .bx{fill:var(--panel);stroke:var(--grid);stroke-width:1.5}
+svg .bx-a{fill:none;stroke:var(--accent);stroke-width:2}
+svg .bx-g{fill:none;stroke:var(--good);stroke-width:2}
+svg .bx-w{fill:none;stroke:var(--warn);stroke-width:2}
+svg .bx-b{fill:none;stroke:var(--bad);stroke-width:2}
+svg .ar{stroke:var(--dim);stroke-width:1.6;fill:none}
+svg .ar-a{stroke:var(--accent);stroke-width:2;fill:none}
+svg .lbl{font-size:10px;fill:var(--dim)}
+
+@media (max-width:900px){
+  body{grid-template-columns:1fr}
+  nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--grid)}
+  main{padding:24px 20px 60px}
+  .cols,.tiles{grid-template-columns:1fr}
+}
+@media print{
+  body{grid-template-columns:1fr;background:#fff;color:#000}
+  nav{display:none}
+  main{padding:0;max-width:100%}
+  h2{page-break-after:avoid}
+  figure,table,.card,.warn,.bad,.good{page-break-inside:avoid}
+  a{color:#000;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">OpsTrail</span>
+  <span class="sub">Tổng quan &amp; cơ chế · 2026-10-06</span>
+
+  <div class="grp">Tổng quan</div>
+  <a href="#van-de">Vấn đề đang giải</a>
+  <a href="#lam-gi">OpsTrail làm gì</a>
+  <a href="#hien-trang">Hiện trạng</a>
+  <a href="#lo-trinh">Lộ trình</a>
+
+  <div class="grp">Cơ chế</div>
+  <a href="#luong">1. Luồng alert</a>
+  <a href="#gan-nhan">2. Gán nhãn 3 bước</a>
+  <a href="#chong-trung">3. Chống trùng &amp; chống spam</a>
+  <a href="#gui-tin">4. Gửi tin &amp; retry</a>
+  <a href="#data-model">5. Data model</a>
+
+  <div class="grp">Thực hành</div>
+  <a href="#tich-hop">6. Các bước tích hợp</a>
+  <a href="#loi">7. Lỗi thường gặp</a>
+</nav>
+
+<main>
+<h1>OpsTrail</h1>
+<p class="lead">
+  Nhận alert từ Alertmanager, gán nhãn service/team, lưu lịch sử, gửi sang MS Teams.
+  Trang này giải thích cơ chế bên trong và cách tích hợp.
+</p>
+
+<h2 id="van-de">Vấn đề đang giải</h2>
+<div class="cols">
+  <div class="card">
+    <h4>Trước</h4>
+    <ul>
+      <li>Alert đổ thẳng vào Teams, không ai biết <b>alert nào thuộc service nào</b></li>
+      <li>Không có lịch sử — muốn biết "tháng trước service X kêu bao nhiêu lần" thì chịu</li>
+      <li>Alertmanager nhắc lại mỗi vài giờ → kênh Teams đầy card trùng</li>
+      <li>Teams hoặc Power Automate chết thì alert <b>mất luôn</b>, không ai hay</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Sau</h4>
+    <ul>
+      <li>Mỗi alert được gán <b>service</b> và <b>team</b> tự động</li>
+      <li>Lịch sử lưu trong PostgreSQL, giữ 6 tháng, có dashboard phân tích</li>
+      <li>Alert lặp lại <b>không</b> gửi lại card — chỉ gửi khi mới hoặc đổi trạng thái</li>
+      <li>Lưu trước, gửi sau: Teams chết thì alert vẫn còn, và tự gửi lại khi Teams quay lại</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="lam-gi">OpsTrail làm gì</h2>
+<figure>
+<svg viewBox="0 0 880 150" role="img" aria-label="Sơ đồ tổng quan">
+  <rect class="bx" x="8" y="42" width="128" height="58" rx="8"/>
+  <text x="72" y="66" text-anchor="middle">Prometheus</text>
+  <text class="sm" x="72" y="83" text-anchor="middle">alerting rules</text>
+
+  <rect class="bx" x="172" y="42" width="128" height="58" rx="8"/>
+  <text x="236" y="66" text-anchor="middle">Alertmanager</text>
+  <text class="sm" x="236" y="83" text-anchor="middle">gom · chống ồn</text>
+
+  <rect class="bx-a" x="336" y="28" width="178" height="86" rx="8"/>
+  <text x="425" y="56" text-anchor="middle" font-weight="700">OpsTrail</text>
+  <text class="sm" x="425" y="74" text-anchor="middle">gán nhãn · lưu · gửi</text>
+  <text class="sm" x="425" y="90" text-anchor="middle">dashboard · quản trị</text>
+
+  <rect class="bx" x="556" y="12" width="140" height="48" rx="8"/>
+  <text x="626" y="40" text-anchor="middle">MS Teams</text>
+
+  <rect class="bx" x="556" y="82" width="140" height="48" rx="8"/>
+  <text x="626" y="104" text-anchor="middle">Webhook khác</text>
+  <text class="sm" x="626" y="118" text-anchor="middle">SMS, ticket…</text>
+
+  <rect class="bx-g" x="732" y="42" width="136" height="58" rx="8"/>
+  <text x="800" y="66" text-anchor="middle">PostgreSQL</text>
+  <text class="sm" x="800" y="83" text-anchor="middle">lịch sử 6 tháng</text>
+
+  <path class="ar" d="M136 71h30" marker-end="url(#a)"/>
+  <path class="ar-a" d="M300 71h30" marker-end="url(#aa)"/>
+  <path class="ar" d="M514 60c20 0 20-24 38-24" marker-end="url(#a)"/>
+  <path class="ar" d="M514 82c20 0 20 24 38 24" marker-end="url(#a)"/>
+  <path class="ar-a" d="M470 114v12h300v-44" marker-end="url(#aa)"/>
+
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 1l6 3-6 3z" fill="currentColor" style="fill:var(--dim)"/></marker>
+    <marker id="aa" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 1l6 3-6 3z" style="fill:var(--accent)"/></marker>
+  </defs>
+</svg>
+<figcaption>OpsTrail đứng giữa Alertmanager và các kênh thông báo, đồng thời giữ lịch sử</figcaption>
+</figure>
+
+<h2 id="hien-trang">Hiện trạng</h2>
+<div class="tiles">
+  <div class="tile"><b>131</b><span>test pass</span></div>
+  <div class="tile"><b>3.749</b><span>dòng code</span></div>
+  <div class="tile"><b>9</b><span>bảng dữ liệu</span></div>
+  <div class="tile"><b>Phase 1</b><span>đã xong</span></div>
+</div>
+<p>
+  Đã kiểm chứng end-to-end với <b>Alertmanager thật</b> (không phải payload giả):
+  nhận alert, chống trùng khi AM gửi lại, ghi nhận lúc alert kết thúc, gán nhãn
+  hai đường, gửi Teams, tự gửi lại khi Teams hồi phục, xoá dữ liệu quá hạn.
+</p>
+
+<h2 id="lo-trinh">Lộ trình</h2>
+<table>
+  <tr><th>Giai đoạn</th><th>Nội dung</th><th>Trạng thái</th></tr>
+  <tr><td><b>Phase 1</b></td><td>Nhận alert · gán nhãn · gửi Teams · dashboard · quản trị · retention</td><td style="color:var(--good)"><b>Xong</b></td></tr>
+  <tr><td>Phase 2.1</td><td>Sửa service/team/rule; trang audit log</td><td>Kế tiếp</td></tr>
+  <tr><td>Phase 2.4</td><td>Gom alert thành <b>sự cố</b> — nền để tính MTTR</td><td>Kế hoạch</td></tr>
+  <tr><td>Phase 2.2–2.3</td><td>Nhắc đúng tên người trong Teams · giao việc</td><td>Kế hoạch</td></tr>
+  <tr><td>Phase 2.5</td><td><b>DORA</b> — cần thêm dữ liệu deploy từ CI/CD</td><td>Kế hoạch</td></tr>
+  <tr><td>Phase 3</td><td>SSO · giới hạn theo team · chạy nhiều bản sao</td><td>Sau</td></tr>
+</table>
+<div class="warn">
+  <b>Lưu ý về DORA.</b> DORA có 4 chỉ số, <b>3 trong 4 không đến từ alert</b>
+  (Deployment Frequency, Lead Time, Change Failure Rate đều cần dữ liệu CI/CD và
+  git). Alert chỉ cho nguyên liệu của chỉ số thứ tư. Muốn đủ DORA thì phải cho
+  CI/CD báo mỗi lần deploy về OpsTrail — đó là nội dung Phase 2.5.
+</div>
+<h2 id="luong">1. Luồng alert</h2>
+<figure>
+<svg viewBox="0 0 880 330" role="img" aria-label="Luồng xử lý một alert">
+  <rect class="bx" x="8" y="20" width="120" height="50" rx="8"/>
+  <text x="68" y="42" text-anchor="middle">Alertmanager</text>
+  <text class="sm" x="68" y="58" text-anchor="middle">POST /api/v1/…</text>
+
+  <rect class="bx" x="168" y="20" width="120" height="50" rx="8"/>
+  <text x="228" y="42" text-anchor="middle">Xác thực</text>
+  <text class="sm" x="228" y="58" text-anchor="middle">Bearer token</text>
+
+  <rect class="bx" x="328" y="20" width="120" height="50" rx="8"/>
+  <text x="388" y="42" text-anchor="middle">Gán nhãn</text>
+  <text class="sm" x="388" y="58" text-anchor="middle">service · team</text>
+
+  <rect class="bx-g" x="488" y="20" width="140" height="50" rx="8"/>
+  <text x="558" y="42" text-anchor="middle" font-weight="700">UPSERT</text>
+  <text class="sm" x="558" y="58" text-anchor="middle">PostgreSQL</text>
+
+  <rect class="bx-a" x="668" y="20" width="120" height="50" rx="8"/>
+  <text x="728" y="42" text-anchor="middle">HTTP 202</text>
+  <text class="sm" x="728" y="58" text-anchor="middle">trả về ngay</text>
+
+  <path class="ar" d="M128 45h32" marker-end="url(#b)"/>
+  <path class="ar" d="M288 45h32" marker-end="url(#b)"/>
+  <path class="ar" d="M448 45h32" marker-end="url(#b)"/>
+  <path class="ar" d="M628 45h32" marker-end="url(#b)"/>
+
+  <text class="lbl" x="558" y="92" text-anchor="middle">lưu xong mới trả 2xx</text>
+
+  <rect class="bx-w" x="488" y="118" width="140" height="46" rx="8"/>
+  <text x="558" y="139" text-anchor="middle">Nền: dispatch</text>
+  <text class="sm" x="558" y="154" text-anchor="middle">sau khi đã trả lời</text>
+  <path class="ar-a" d="M558 70v44" marker-end="url(#ba)"/>
+
+  <rect class="bx" x="330" y="200" width="150" height="48" rx="8"/>
+  <text x="405" y="222" text-anchor="middle">MS Teams</text>
+  <text class="sm" x="405" y="237" text-anchor="middle">Adaptive Card</text>
+
+  <rect class="bx" x="636" y="200" width="150" height="48" rx="8"/>
+  <text x="711" y="222" text-anchor="middle">Webhook khác</text>
+  <text class="sm" x="711" y="237" text-anchor="middle">JSON envelope</text>
+
+  <path class="ar" d="M520 164c-40 0-75 16-100 30" marker-end="url(#b)"/>
+  <path class="ar" d="M596 164c40 0 75 16 100 30" marker-end="url(#b)"/>
+
+  <rect class="bx-b" x="8" y="118" width="300" height="60" rx="8"/>
+  <text x="158" y="140" text-anchor="middle" font-weight="700">Nếu LƯU thất bại → 5xx</text>
+  <text class="sm" x="158" y="158" text-anchor="middle">Alertmanager tự gửi lại.</text>
+  <text class="sm" x="158" y="171" text-anchor="middle">Đây là bảo đảm không mất alert.</text>
+  <path class="ar" d="M488 50c-120 0-200 40-180 68" marker-end="url(#b)" stroke-dasharray="4 3"/>
+
+  <rect class="bx" x="330" y="276" width="456" height="42" rx="8"/>
+  <text x="558" y="302" text-anchor="middle" class="sm">
+    Mỗi lần gửi ghi một dòng vào bảng notifications: trạng thái, HTTP code, thời gian, lỗi
+  </text>
+  <path class="ar" d="M405 248v24" marker-end="url(#b)"/>
+  <path class="ar" d="M711 248v24" marker-end="url(#b)"/>
+
+  <defs>
+    <marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 1l6 3-6 3z" style="fill:var(--dim)"/></marker>
+    <marker id="ba" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 1l6 3-6 3z" style="fill:var(--accent)"/></marker>
+  </defs>
+</svg>
+<figcaption>Lưu trước, gửi sau — và trả 5xx khi lưu hỏng để Alertmanager tự thử lại</figcaption>
+</figure>
+
+<div class="good">
+  <b>Vì sao lưu trước rồi mới gửi.</b> Nếu gửi trước, Power Automate chết là
+  alert biến mất không dấu vết. Lưu trước thì dù mọi kênh đều hỏng, bản ghi vẫn
+  còn và bảng <code>notifications</code> nói rõ chuyện gì đã xảy ra.
+</div>
+
+<h2 id="gan-nhan">2. Gán nhãn 3 bước</h2>
+<figure>
+<svg viewBox="0 0 820 340" role="img" aria-label="Cây quyết định gán nhãn">
+  <rect class="bx" x="300" y="8" width="220" height="42" rx="8"/>
+  <text x="410" y="34" text-anchor="middle">Alert vào</text>
+
+  <path class="ar" d="M410 50v24" marker-end="url(#c)"/>
+
+  <rect class="bx-g" x="236" y="74" width="348" height="58" rx="8"/>
+  <text x="410" y="96" text-anchor="middle" font-weight="700">1 · Alert có sẵn nhãn không?</text>
+  <text class="sm" x="410" y="114" text-anchor="middle">service · service_name · app · component · job</text>
+  <text class="sm" x="410" y="126" text-anchor="middle">team · squad · owner</text>
+
+  <path class="ar" d="M584 103h86v-42h40" marker-end="url(#c)"/>
+  <rect class="bx-g" x="634" y="140" width="178" height="46" rx="8"/>
+  <text x="723" y="161" text-anchor="middle">label_source =</text>
+  <text x="723" y="177" text-anchor="middle" font-weight="700">payload</text>
+  <path class="ar" d="M584 103h40v37" marker-end="url(#c)"/>
+  <text class="lbl" x="604" y="96">có</text>
+
+  <path class="ar" d="M410 132v26" marker-end="url(#c)"/>
+  <text class="lbl" x="424" y="150">không</text>
+
+  <rect class="bx-a" x="236" y="158" width="348" height="58" rx="8"/>
+  <text x="410" y="180" text-anchor="middle" font-weight="700">2 · Có label rule nào khớp không?</text>
+  <text class="sm" x="410" y="198" text-anchor="middle">khớp bất kỳ label nào · priority nhỏ thắng</text>
+  <text class="sm" x="410" y="210" text-anchor="middle">hỗ trợ wildcard pg-prod-*</text>
+
+  <path class="ar-a" d="M584 187h40v37" marker-end="url(#ca)"/>
+  <text class="lbl" x="604" y="180">có</text>
+  <rect class="bx-a" x="634" y="224" width="178" height="46" rx="8"/>
+  <text x="723" y="245" text-anchor="middle">label_source =</text>
+  <text x="723" y="261" text-anchor="middle" font-weight="700">rule</text>
+
+  <path class="ar" d="M410 216v34" marker-end="url(#c)"/>
+  <text class="lbl" x="424" y="236">không</text>
+
+  <rect class="bx-w" x="236" y="250" width="348" height="58" rx="8"/>
+  <text x="410" y="274" text-anchor="middle" font-weight="700">3 · Chưa có nhãn</text>
+  <text class="sm" x="410" y="292" text-anchor="middle">nằm ở trang Unlabelled, chờ tạo rule hoặc gán tay</text>
+
+  <defs>
+    <marker id="c" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 1l6 3-6 3z" style="fill:var(--dim)"/></marker>
+    <marker id="ca" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 1l6 3-6 3z" style="fill:var(--accent)"/></marker>
+  </defs>
+</svg>
+<figcaption>Ba bước chạy cho mọi alert, kể cả alert Alertmanager gửi lại</figcaption>
+</figure>
+
+<div class="bad">
+  <b>Bẫy: <code>payload</code> luôn thắng <code>rule</code>.</b>
+  <code>job</code> nằm sẵn trong danh sách key ở bước 1. Nếu bạn tạo service có
+  key <code>node-exporter</code> thì <b>mọi</b> alert mang
+  <code>job=node-exporter</code> sẽ tự gán theo đó, và rule của bạn
+  <b>không bao giờ chạy</b> — kể cả rule <code>priority=1</code>.
+  <br><br>
+  → Khi đặt <code>key</code> cho service, <b>tránh trùng tên scrape job</b> trừ
+  khi bạn thực sự muốn mọi alert của job đó thuộc về service đó.
+</div>
+
+<h3>Alert cũ thì sao?</h3>
+<p>
+  Rule chỉ ăn với alert mà Alertmanager <b>còn gửi lại</b>. Alert đã kết thúc
+  thì không bao giờ được gửi lại nữa — nếu không làm gì, nó kẹt không nhãn
+  vĩnh viễn. Vì thế có chức năng <b>Apply rules to stored alerts</b>: xem trước
+  nó sẽ gán gì cho bao nhiêu alert, rồi mới bấm áp dụng. Nhãn gán tay không bị
+  đụng đến.
+</p>
+<h2 id="chong-trung">3. Chống trùng &amp; chống spam</h2>
+<p>
+  Alertmanager nhắc lại alert chưa kết thúc mỗi <code>repeat_interval</code>
+  (thường 4 giờ, trong môi trường dev có thể 1 phút). Hai cơ chế khác nhau xử
+  lý việc này — và chúng giải hai vấn đề khác nhau.
+</p>
+
+<div class="cols">
+  <div class="card">
+    <h4>Chống trùng trong DB</h4>
+    <p>Khoá <code>(fingerprint, starts_at)</code> là định danh tự nhiên của
+      một lần alert xảy ra. Gửi lại bao nhiêu lần cũng <b>cập nhật đúng một
+      dòng</b>, không tạo dòng mới.</p>
+    <p class="sm" style="color:var(--dim)">Nếu INSERT thuần: một alert thành
+      hàng chục dòng, và mọi thống kê dựng trên đó đều sai.</p>
+  </div>
+  <div class="card">
+    <h4>Chống spam Teams</h4>
+    <p>Chỉ gửi card khi alert <b>mới</b> hoặc <b>đổi trạng thái</b>.
+      Lần nhắc lại vẫn cập nhật dòng trong DB nhưng <b>im lặng</b>.</p>
+    <p class="sm" style="color:var(--dim)">Nếu không: <code>repeat_interval:
+      1m</code> sẽ dội kênh Teams mỗi phút cho cùng một sự cố.</p>
+  </div>
+</div>
+
+<pre><code>lần 1     {"received":1, "notified":1, "queued":2}   ← card được gửi
+lần 2-5   {"received":1, "notified":0, "queued":0}   ← repeat, im lặng
+resolved  {"received":1, "notified":1, "queued":2}   ← đổi trạng thái, có gửi</code></pre>
+
+<table>
+  <tr><th>Trường</th><th>Nghĩa</th></tr>
+  <tr><td><code>received</code></td><td>Số alert đã <b>lưu</b></td></tr>
+  <tr><td><code>notified</code></td><td>Số alert mới hoặc đổi trạng thái — tức số card sẽ gửi</td></tr>
+  <tr><td><code>queued</code></td><td>Số bản ghi delivery đã tạo (mỗi kênh một bản ghi)</td></tr>
+</table>
+
+<h2 id="gui-tin">4. Gửi tin &amp; retry</h2>
+<figure>
+<svg viewBox="0 0 820 190" role="img" aria-label="Vòng đời một lần gửi">
+  <rect class="bx-w" x="8" y="60" width="120" height="50" rx="8"/>
+  <text x="68" y="82" text-anchor="middle">pending</text>
+  <text class="sm" x="68" y="98" text-anchor="middle">chờ gửi</text>
+
+  <rect class="bx" x="200" y="60" width="130" height="50" rx="8"/>
+  <text x="265" y="82" text-anchor="middle">POST</text>
+  <text class="sm" x="265" y="98" text-anchor="middle">Power Automate</text>
+
+  <rect class="bx-g" x="420" y="12" width="130" height="50" rx="8"/>
+  <text x="485" y="34" text-anchor="middle">sent</text>
+  <text class="sm" x="485" y="50" text-anchor="middle">2xx</text>
+
+  <rect class="bx-b" x="420" y="118" width="130" height="50" rx="8"/>
+  <text x="485" y="140" text-anchor="middle">failed</text>
+  <text class="sm" x="485" y="156" text-anchor="middle">quá 60 phút</text>
+
+  <path class="ar" d="M128 85h62" marker-end="url(#d)"/>
+  <path class="ar" d="M330 78c40 0 40-40 80-40" marker-end="url(#d)"/>
+  <path class="ar" d="M330 92c40 0 40 48 80 48" marker-end="url(#d)"/>
+
+  <path class="ar" d="M265 110v38h-150v-55" marker-end="url(#d)" stroke-dasharray="5 4"/>
+  <text class="lbl" x="190" y="163">thử lại: 5s → 10s → 20s … tối đa 5 phút</text>
+
+  <rect class="bx" x="596" y="60" width="216" height="50" rx="8"/>
+  <text x="704" y="81" text-anchor="middle" class="sm">Mỗi lần thử ghi lại: số lần,</text>
+  <text x="704" y="96" text-anchor="middle" class="sm">HTTP code, thời gian, nội dung lỗi</text>
+
+  <defs>
+    <marker id="d" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 1l6 3-6 3z" style="fill:var(--dim)"/></marker>
+  </defs>
+</svg>
+<figcaption>Bỏ cuộc theo <b>tuổi</b> (mặc định 60 phút), không theo số lần thử</figcaption>
+</figure>
+
+<div class="warn">
+  <b>Vì sao bỏ cuộc theo tuổi chứ không theo số lần.</b> Giới hạn "thử 5 lần"
+  nghe an toàn, nhưng cộng với backoff luỹ thừa thì thực tế chỉ chịu được
+  <b>khoảng 30 giây</b> mất kết nối — đủ cho một lần restart container, không
+  đâu vào đâu với một sự cố Teams thật. Bỏ cuộc theo tuổi cho phép chịu đựng
+  cả giờ mà vẫn không dồn dập gọi lại.
+</div>
+
+<h2 id="data-model">5. Data model</h2>
+<figure>
+<svg viewBox="0 0 840 330" role="img" aria-label="Sơ đồ quan hệ các bảng">
+  <rect class="bx-a" x="300" y="112" width="190" height="104" rx="8"/>
+  <text x="395" y="134" text-anchor="middle" font-weight="700">alerts</text>
+  <text class="sm" x="395" y="152" text-anchor="middle">fingerprint + starts_at</text>
+  <text class="sm" x="395" y="166" text-anchor="middle">status · severity · labels</text>
+  <text class="sm" x="395" y="180" text-anchor="middle">service_id · team_id</text>
+  <text class="sm" x="395" y="194" text-anchor="middle">label_source</text>
+  <text class="sm" x="395" y="208" text-anchor="middle" style="fill:var(--violet)">incident_id · assignee_id</text>
+
+  <rect class="bx" x="40" y="40" width="160" height="56" rx="8"/>
+  <text x="120" y="62" text-anchor="middle">services</text>
+  <text class="sm" x="120" y="80" text-anchor="middle">key · name · app_type</text>
+
+  <rect class="bx" x="40" y="136" width="160" height="56" rx="8"/>
+  <text x="120" y="158" text-anchor="middle">teams</text>
+  <text class="sm" x="120" y="176" text-anchor="middle">key · webhook riêng</text>
+
+  <rect class="bx" x="40" y="232" width="160" height="56" rx="8"/>
+  <text x="120" y="254" text-anchor="middle">label_rules</text>
+  <text class="sm" x="120" y="272" text-anchor="middle">priority · match · →service</text>
+
+  <rect class="bx" x="590" y="112" width="180" height="60" rx="8"/>
+  <text x="680" y="134" text-anchor="middle">notifications</text>
+  <text class="sm" x="680" y="152" text-anchor="middle">channel · status · attempts</text>
+  <text class="sm" x="680" y="165" text-anchor="middle">last_error · duration_ms</text>
+
+  <rect class="bx" x="590" y="216" width="180" height="50" rx="8"/>
+  <text x="680" y="238" text-anchor="middle">audit_log</text>
+  <text class="sm" x="680" y="254" text-anchor="middle">ai · làm gì · trước→sau</text>
+
+  <rect class="bx" x="590" y="30" width="180" height="50" rx="8"/>
+  <text x="680" y="52" text-anchor="middle">users</text>
+  <text class="sm" x="680" y="68" text-anchor="middle">role · is_active · upn</text>
+
+  <rect x="300" y="256" width="190" height="48" rx="8"
+        style="fill:none;stroke:var(--violet);stroke-width:2;stroke-dasharray:5 4"/>
+  <text x="395" y="276" text-anchor="middle" style="fill:var(--violet)">incidents</text>
+  <text class="sm" x="395" y="292" text-anchor="middle" style="fill:var(--violet)">đã tạo, dùng ở Phase 2</text>
+
+  <path class="ar" d="M200 68c60 0 50 70 94 76" marker-end="url(#e)"/>
+  <path class="ar" d="M200 164h92" marker-end="url(#e)"/>
+  <path class="ar" d="M200 260c60 0 50-70 94-76" marker-end="url(#e)" stroke-dasharray="4 3"/>
+  <path class="ar" d="M490 150h92" marker-end="url(#e)"/>
+  <path class="ar" d="M395 216v34" marker-end="url(#e)" stroke-dasharray="4 3"/>
+  <path class="ar" d="M680 80v24" marker-end="url(#e)" stroke-dasharray="4 3"/>
+  <path class="ar" d="M680 172v36" marker-end="url(#e)" stroke-dasharray="4 3"/>
+
+  <defs>
+    <marker id="e" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 1l6 3-6 3z" style="fill:var(--dim)"/></marker>
+  </defs>
+</svg>
+<figcaption>Nét liền: quan hệ đang dùng. Nét đứt: quan hệ gián tiếp hoặc đã chuẩn bị cho Phase 2</figcaption>
+</figure>
+
+<table>
+  <tr><th>Bảng</th><th>Giữ gì</th></tr>
+  <tr><td><code>alerts</code></td><td>Mỗi lần alert xảy ra, khoá <code>(fingerprint, starts_at)</code></td></tr>
+  <tr><td><code>services</code> · <code>teams</code></td><td>Danh mục nhãn. <code>key</code> là thứ đem so với label của alert</td></tr>
+  <tr><td><code>label_rules</code></td><td>Quy tắc gán nhãn cho alert không tự mang nhãn</td></tr>
+  <tr><td><code>notifications</code></td><td>Mỗi lần gửi đi — trả lời "alert này đã ra chưa, lỗi gì"</td></tr>
+  <tr><td><code>users</code> · <code>audit_log</code></td><td>Tài khoản và nhật ký thao tác</td></tr>
+  <tr><td><code>incidents</code></td><td>Đã tạo sẵn, Phase 2 dùng để gom alert và tính MTTR</td></tr>
+</table>
+
+<div class="warn">
+  <b>MTTR phải tính trên <code>incidents</code>, không phải <code>alerts</code>.</b>
+  Một rule flapping cắt một sự cố thành hàng chục cặp bật/tắt ngắn. Lấy
+  <code>ends_at - starts_at</code> của alert rồi gọi là MTTR sẽ ra con số đẹp mà
+  vô nghĩa. Biểu đồ trên dashboard vì thế ghi rõ là "thời gian alert còn kêu",
+  không phải MTTR.
+</div>
+<h2 id="tich-hop">6. Các bước tích hợp</h2>
+
+<h3>Bước 1 — Chạy OpsTrail</h3>
+<pre><code>cp .env.example .env            # sửa INTAKE_TOKEN + SESSION_SECRET
+docker compose up -d
+curl localhost:8000/healthz     # {"status":"ok"}</code></pre>
+
+<div class="bad">
+  <b>Bẫy: hai file env.</b> Docker Compose <b>tự động đọc <code>.env</code></b>
+  ở thư mục gốc để nội suy <code>${VAR}</code>. Nếu bạn để URL
+  <code>localhost</code> trong đó, container sẽ gọi vào chính nó và
+  <b>mọi notification fail với <code>ConnectError</code></b> dù mạng hoàn toàn
+  thông. Dùng <code>.env</code> cho Compose (tên service) và
+  <code>.env.local</code> khi chạy uvicorn trực tiếp trên máy (localhost).
+</div>
+
+<h3>Bước 2 — Tạo tài khoản</h3>
+<pre><code>docker compose exec opstrail python -m app.cli create-user \
+  --username admin --role admin</code></pre>
+<p>Bảng user khởi đầu rỗng, không có bước này thì không ai đăng nhập được.
+  Mật khẩu nhập tương tác, không truyền qua tham số để không lọt vào lịch sử shell.</p>
+
+<h3>Bước 3 — Cắm Alertmanager</h3>
+<pre><code>receivers:
+  - name: opstrail
+    webhook_configs:
+      - url: http://opstrail:8000/api/v1/webhooks/alertmanager
+        send_resolved: true          # BẮT BUỘC
+        http_config:
+          authorization:
+            type: Bearer
+            credentials: &lt;INTAKE_TOKEN&gt;</code></pre>
+
+<div class="warn">
+  <b><code>send_resolved: true</code> là bắt buộc.</b> Không có nó, OpsTrail
+  không bao giờ biết alert kết thúc lúc nào: <code>ends_at</code> luôn rỗng, mọi
+  alert trông như đang kêu vĩnh viễn, và ô "still firing" trên dashboard chỉ
+  tăng chứ không bao giờ giảm.
+</div>
+
+<h3>Bước 4 — Cho alert mang nhãn (nên làm)</h3>
+<pre><code>- alert: PostgresqlDown
+  expr: up{job="postgres"} == 0
+  for: 2m
+  labels:
+    severity: critical
+    service: payments-api     # khớp services.key trong OpsTrail
+    team: payments            # khớp teams.key
+  annotations:
+    summary: "Postgres down ({{ $labels.instance }})"</code></pre>
+<p>
+  Không sửa được alerting rule? Tạo <b>label rule</b> trên UI tại
+  <b>Labels → Rules</b> — khớp theo <code>alertname</code>,
+  <code>instance</code>, <code>namespace</code>… có hỗ trợ wildcard.
+</p>
+
+<h3>Bước 5 — Cắm MS Teams</h3>
+<ol>
+  <li>Vào <code>make.powerautomate.com</code> → Create → Instant cloud flow</li>
+  <li>Trigger: <b>When a Teams webhook request is received</b></li>
+  <li>Action: <b>Post card in a chat or channel</b> → Post as <i>Flow bot</i> → chọn channel</li>
+  <li>Save, copy <b>HTTP POST URL</b> vào <code>MSTEAMS_POWER_AUTOMATE_URL</code></li>
+  <li><code>docker compose up -d --force-recreate opstrail</code></li>
+</ol>
+<div class="warn">
+  <b>Office 365 connector đã bị Microsoft khai tử.</b> URL dạng
+  <code>*.webhook.office.com</code> không dùng được nữa. OpsTrail <b>từ chối</b>
+  URL đó kèm thông báo rõ thay vì gửi vào hư không.
+</div>
+<p>Muốn mỗi team một channel riêng: khai báo team ở <b>Labels → Teams</b> kèm
+  Power Automate URL của nó. OpsTrail tự chọn channel theo nhãn team của alert.</p>
+
+<h3>Bước 6 — Kiểm chứng</h3>
+<pre><code>curl -X POST http://localhost:9093/api/v2/alerts \
+  -H 'Content-Type: application/json' -d '[{
+    "labels":{"alertname":"TestFromAM","severity":"warning",
+              "service":"payments-api","team":"payments"},
+    "annotations":{"summary":"kiem tra tich hop"},
+    "startsAt":"'"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"'"}]'</code></pre>
+<p>Rồi kiểm ba chỗ: alert hiện ở <code>/alerts</code> · card đến Teams ·
+  trang chi tiết alert mục <b>Delivery</b> hiện <code>sent</code>.</p>
+
+<h2 id="loi">7. Lỗi thường gặp</h2>
+<table>
+  <tr><th>Triệu chứng</th><th>Nguyên nhân</th><th>Cách sửa</th></tr>
+  <tr>
+    <td>Alertmanager log báo <code>401</code></td>
+    <td><code>INTAKE_TOKEN</code> lệch</td>
+    <td>So lại <code>credentials</code> trong <code>http_config</code> với biến môi trường</td>
+  </tr>
+  <tr>
+    <td><code>422</code> khi gửi</td>
+    <td>Payload thiếu <code>fingerprint</code> hoặc <code>startsAt</code></td>
+    <td>Kiểm tra dùng webhook format v4; không dùng cấu hình quá cũ</td>
+  </tr>
+  <tr>
+    <td>Alert vào nhưng <b>không có nhãn</b></td>
+    <td>Rule không gửi label <code>service</code>/<code>team</code>, và chưa có label rule khớp</td>
+    <td>Thêm label vào alerting rule, hoặc tạo label rule tại <b>Labels → Rules</b></td>
+  </tr>
+  <tr>
+    <td><code>ends_at</code> luôn rỗng</td>
+    <td>Thiếu <code>send_resolved: true</code></td>
+    <td>Thêm vào receiver rồi reload Alertmanager</td>
+  </tr>
+  <tr>
+    <td><b>Mọi</b> notification <code>ConnectError</code></td>
+    <td><code>.env</code> chứa URL <code>localhost</code>, bị Compose đọc và đè tên service</td>
+    <td>Dùng tên service trong <code>.env</code>; URL localhost để ở <code>.env.local</code></td>
+  </tr>
+  <tr>
+    <td>Rule đã tạo mà alert vẫn không nhận</td>
+    <td>Service key trùng tên scrape job → bước <code>payload</code> đã giành trước</td>
+    <td>Đổi tên key service, hoặc chấp nhận hành vi đó</td>
+  </tr>
+  <tr>
+    <td>Rule mới không áp cho alert cũ</td>
+    <td>Alert đã kết thúc, Alertmanager không gửi lại</td>
+    <td><b>Labels → Rules → Apply rules to stored alerts</b></td>
+  </tr>
+  <tr>
+    <td>Teams không nhận card</td>
+    <td>URL sai, flow tắt, hoặc bị throttle</td>
+    <td>Xem cột <code>last_error</code> trong bảng <code>notifications</code></td>
+  </tr>
+</table>
+
+<h4>Ba câu lệnh chẩn đoán</h4>
+<pre><code>-- alert gần nhất đã vào chưa
+SELECT id, alertname, severity, status, label_source, received_at
+FROM alerts ORDER BY received_at DESC LIMIT 10;
+
+-- gửi đi có lỗi không
+SELECT channel, status, attempts, response_status, left(last_error, 80)
+FROM notifications ORDER BY id DESC LIMIT 10;
+
+-- alertname nào đang thiếu rule
+SELECT alertname, count(*) FROM alerts
+WHERE label_source IS NULL GROUP BY 1 ORDER BY 2 DESC;</code></pre>
+
+<p style="margin-top:48px;padding-top:18px;border-top:1px solid var(--grid);
+   font-size:13px;color:var(--dim)">
+  Tài liệu chi tiết nằm trong <code>README.md</code> và thư mục <code>docs/</code>
+  của mã nguồn. Trang này chốt ngày 2026-10-06.
+</p>
+</main>
+</body>
+</html>

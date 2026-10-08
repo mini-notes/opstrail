@@ -1,0 +1,92 @@
+{% extends "ui/base.html" %}
+{% set active = 'owners' %}
+{% block title %}Owners · OpsTrail{% endblock %}
+{% block content %}
+<h1>Owners</h1>
+<p class="note">
+  Người chịu trách nhiệm cho service/team. <b>Không cần tài khoản OpsTrail</b> —
+  đây là danh bạ riêng. Khi alert đạt ngưỡng severity, họ được @mention trong card Teams.
+  Gán owner cho service/team ở trang <a href="/labels/services">Services</a> và
+  <a href="/labels/teams">Teams</a>.
+</p>
+
+{% if can_edit %}
+<section class="card">
+  <h2>Thêm owner</h2>
+  <form method="post" action="/labels/owners" class="adminform">
+    <label>Tên <input name="name" required autocomplete="off" placeholder="Nguyễn Văn A"></label>
+    <label>Email <input name="email" type="email" autocomplete="off" placeholder="a.nguyen@company.com"></label>
+    <label>UPN <span class="muted">(thường trùng email)</span>
+      <input name="upn" autocomplete="off"></label>
+    <label>AAD Object ID <span class="muted">(dự phòng nếu UPN không mention được)</span>
+      <input name="aad_object_id" autocomplete="off" placeholder="00000000-0000-..."></label>
+    <label>Điện thoại <span class="muted">(dành cho SMS phase sau)</span>
+      <input name="phone" autocomplete="off"></label>
+    <label>Chức danh <input name="title" autocomplete="off" placeholder="SRE"></label>
+    <button type="submit" class="wide">Tạo owner</button>
+  </form>
+  <p class="hint">
+    Chưa biết lấy UPN/AAD ID ở đâu? Xem <code>docs/metadata.md</code> — có lệnh
+    <code>az ad user show</code> và quy trình test mention 5 bước.
+  </p>
+</section>
+{% endif %}
+
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ q or '' }}" placeholder="Tìm tên, email, UPN">
+  <button type="submit">Tìm</button>
+  <a class="link" href="/labels/owners">Reset</a>
+</form>
+
+<table class="grid">
+  <thead><tr>
+    {% with key='name',  label='Tên'   %}{% include "ui/_sorth.html" %}{% endwith %}
+    <th>Định danh Teams</th>
+    {% with key='title', label='Chức danh' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='services', label='Service' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='teams',    label='Team'    %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='status',   label='Trạng thái' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% if can_edit %}<th></th>{% endif %}
+  </tr></thead>
+  <tbody>
+  {% for o in page_obj.items %}
+    <tr class="{{ '' if o.is_active else 'inactive' }}">
+      <td><strong>{{ o.name }}</strong>{% if o.email %}<br><span class="muted small">{{ o.email }}</span>{% endif %}</td>
+      <td class="small">
+        {% if can_edit %}
+        <form method="post" action="/labels/owners/{{ o.id }}/update" class="inline">
+          <input name="email" value="{{ o.email or '' }}" placeholder="email" style="width:150px">
+          <input name="upn" value="{{ o.upn or '' }}" placeholder="UPN" style="width:150px">
+          <input name="aad_object_id" value="{{ o.aad_object_id or '' }}" placeholder="AAD ID" style="width:140px">
+          <input name="phone" value="{{ o.phone or '' }}" placeholder="SĐT" style="width:100px">
+          <button class="secondary" type="submit">Lưu</button>
+        </form>
+        {% else %}
+          <span class="mono">{{ o.upn or o.email or '—' }}</span>
+        {% endif %}
+      </td>
+      <td>{{ o.title or '—' }}</td>
+      <td class="mono">{{ svc_counts.get(o.id, 0) }}</td>
+      <td class="mono">{{ team_counts.get(o.id, 0) }}</td>
+      <td>
+        <form method="post" action="/labels/owners/{{ o.id }}/active" class="inline">
+          <span class="pill {{ 'sent' if o.is_active else 'failed' }}">{{ 'active' if o.is_active else 'tắt' }}</span>
+          {% if can_edit %}<button class="secondary" type="submit">{{ 'Tắt' if o.is_active else 'Bật' }}</button>{% endif %}
+        </form>
+      </td>
+      {% if can_edit %}
+      <td>
+        <form method="post" action="/labels/owners/{{ o.id }}/delete" class="inline"
+              onsubmit="return confirm('Xoá owner {{ o.name }}?\n\nMọi gán cho service/team sẽ mất.')">
+          <button class="danger" type="submit">Xoá</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="empty">Chưa có owner nào. Alert sẽ vẫn gửi bình thường, chỉ không có mention.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "ui/_pager.html" %}
+{% endblock %}

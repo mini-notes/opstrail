@@ -1,0 +1,16 @@
+{% extends "ui/base.html" %}
+{% block title %}Sign in · OpsTrail{% endblock %}
+{% block content %}
+<div class="login">
+  <h1>OpsTrail</h1>
+  <p class="muted">Alert history &amp; MS Teams routing</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <label>Username<input name="username" autocomplete="username" autofocus required></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Sign in</button>
+  </form>
+  <p class="hint">No account yet? Create one on the server:<br>
+    <code>python -m app.cli create-user --username admin --role admin</code></p>
+</div>
+{% endblock %}
