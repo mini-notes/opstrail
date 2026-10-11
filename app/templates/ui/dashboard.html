@@ -29,8 +29,8 @@
     <span class="n">{{ headline.firing }}</span><span class="l">still firing</span></a>
   <a class="tile {{ 'warn' if headline.unlabelled }}" href="/unlabelled">
     <span class="n">{{ headline.unlabelled }}</span><span class="l">unlabelled</span></a>
-  <span class="tile {{ 'bad' if headline.failed_notifications }}">
-    <span class="n">{{ headline.failed_notifications }}</span><span class="l">failed deliveries</span></span>
+  <a class="tile {{ 'bad' if headline.failed_notifications }}" href="/deliveries?delivery_status=failed">
+    <span class="n">{{ headline.failed_notifications }}</span><span class="l">failed deliveries</span></a>
 </div>
 
 <div class="cols">
@@ -66,7 +66,16 @@
   <div id="heat" class="heat"></div>
 </section>
 
-<section class="card"><h2>Delivery outcome</h2><canvas id="notif" height="120"></canvas></section>
+<section class="card">
+  <h2>Delivery outcome</h2>
+  <p class="muted small">
+    Đếm theo alert bắt đầu trong khoảng đã chọn. Bản ghi gửi chỉ được giữ
+    {{ notification_months }} tháng, nên chọn khoảng dài hơn thế sẽ thấy ít đi —
+    là do đã xoá theo retention, không phải do không gửi.
+    <a class="link" href="/deliveries">Xem từng lần gửi →</a>
+  </p>
+  <canvas id="notif" height="120"></canvas>
+</section>
 
 <p id="chartError" class="error" hidden></p>
 {% endblock %}

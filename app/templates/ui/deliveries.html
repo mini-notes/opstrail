@@ -1,0 +1,20 @@
+{% extends "ui/base.html" %}
+{% set active = 'deliveries' %}
+{% block title %}Deliveries · OpsTrail{% endblock %}
+{% block content %}
+<h1>Deliveries</h1>
+<p class="muted">
+  Mỗi lần OpsTrail gọi ra ngoài: một dòng cho mỗi channel, mỗi lần thử. Bảng
+  trên dashboard nói <em>bao nhiêu</em> hỏng; trang này nói <em>cái nào</em> và
+  đầu bên kia trả lời gì. Khoảng thời gian tính theo lúc <b>thử gửi</b>, không
+  phải lúc alert bắt đầu — một lần thử lại hôm nay của alert hai ngày trước
+  vẫn thuộc "Last 1d".
+</p>
+{% with filter_fields = 'ui/_filters_deliveries.html',
+        reset_url = '/deliveries',
+        hx_target = '#deliveryTable',
+        search_placeholder = 'Search alert, error or target' %}
+  {% include "ui/_filters.html" %}
+{% endwith %}
+{% include "ui/_delivery_table.html" %}
+{% endblock %}

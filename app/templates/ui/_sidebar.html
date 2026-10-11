@@ -43,13 +43,25 @@
     </a>
 
     <span class="side-label">Insights</span>
-    <a href="/dashboard" class="{{ 'on' if active == 'dashboard' }}" title="Dashboard">
+    <a href="/deliveries" class="{{ 'on' if active == 'deliveries' }}" title="Deliveries">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M1.5 4.5h13v8h-13z"/><path d="M1.5 5l6.5 4.5L14.5 5"/>
+    </svg>
+    <span>Deliveries</span>
+  </a>
+  <a href="/dashboard" class="{{ 'on' if active == 'dashboard' }}" title="Dashboard">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13V7M6 13V3M10 13V9M14 13V5"/></svg>
       <span>Dashboard</span>
     </a>
 
     <span class="side-label">Settings</span>
-    <a href="/settings/template" class="{{ 'on' if active == 'template' }}" title="Template Teams">
+    <a href="/settings/retention" class="{{ 'on' if active == 'retention' }}" title="Retention">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <ellipse cx="8" cy="3.5" rx="5.5" ry="2"/><path d="M2.5 3.5v9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2v-9"/><path d="M2.5 8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2"/>
+    </svg>
+    <span>Retention</span>
+  </a>
+  <a href="/settings/template" class="{{ 'on' if active == 'template' }}" title="Template Teams">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6.5h12"/></svg>
       <span>Template Teams</span>
     </a>

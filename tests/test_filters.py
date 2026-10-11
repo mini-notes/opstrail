@@ -24,10 +24,13 @@ def probe(
     days: OptInt = None,
     q: OptStr = None,
     severity: OptStr = None,
+    channel: OptStr = None,
+    delivery_status: OptStr = None,
 ):
     return {
         "page": page, "service_id": service_id, "team_id": team_id,
         "days": days, "q": q, "severity": severity,
+        "channel": channel, "delivery_status": delivery_status,
     }
 
 
@@ -62,6 +65,7 @@ def test_real_values_still_bind():
     assert body == {
         "page": 1, "service_id": 3, "team_id": 5,
         "days": 7, "q": "disk", "severity": "critical",
+        "channel": None, "delivery_status": None,
     }
 
 
@@ -79,3 +83,29 @@ def test_other_constraints_survive():
 
 def test_missing_parameters_behave_like_blank_ones():
     assert client.get("/probe").json() == client.get("/probe" + EMPTY_FORM).json()
+
+
+# The delivery page's own controls, all left on their placeholder option.
+EMPTY_DELIVERY_FORM = (
+    "?size=50&q=&channel=&delivery_status=&service_id=&team_id=&days="
+)
+
+
+def test_empty_delivery_form_submission_is_accepted():
+    """Same shipped bug, one page later: the delivery filters are a GET form
+    too, so they submit blanks the moment anyone clicks Reset."""
+    res = client.get("/probe" + EMPTY_DELIVERY_FORM)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["channel"] is None
+    assert body["delivery_status"] is None
+    assert body["service_id"] is None
+
+
+def test_delivery_filters_with_values_still_arrive():
+    res = client.get("/probe?channel=msteams&delivery_status=failed&days=7")
+    assert res.json() == {
+        "page": 1, "service_id": None, "team_id": None, "days": 7,
+        "q": None, "severity": None,
+        "channel": "msteams", "delivery_status": "failed",
+    }

@@ -1,0 +1,79 @@
+{% extends "ui/base.html" %}
+{% set active = 'retention' %}
+{% block title %}Retention · OpsTrail{% endblock %}
+{% block content %}
+<h1>Retention</h1>
+
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<p class="note">
+  Hai cửa sổ, chạy mỗi ngày một lần: alert lúc <b>{{ '%02d'|format(hour) }}:00 UTC</b>,
+  lịch sử gửi lúc <b>{{ '%02d'|format(hour) }}:15 UTC</b>. Xoá theo lô nên không
+  khoá bảng lâu. Đặt số tháng về <code>0</code> là tắt hẳn.
+</p>
+
+<div class="cols">
+  <section class="card">
+    <h2>Alert</h2>
+    <table class="kv">
+      <tr><th>Giữ</th><td>{{ state.alert_months }} tháng{{ ' — đã tắt' if not state.alert_months }}</td></tr>
+      <tr><th>Mốc cắt</th><td class="mono">{{ state.alert_cutoff.strftime('%Y-%m-%d') if state.alert_cutoff else '—' }}</td></tr>
+      <tr><th>Đang có</th><td class="mono">{{ state.alerts_total }}</td></tr>
+      <tr><th>Sẽ xoá ở lần chạy tới</th><td class="mono">{{ state.alerts_due }}</td></tr>
+    </table>
+    {% if can_run %}
+    <form method="post" action="/settings/retention/run?what=alerts" style="margin-top:12px">
+      <button type="submit"
+              onclick="return confirm('Xoá {{ state.alerts_due }} alert cũ hơn mốc cắt? Không hoàn tác được.')">
+        Chạy ngay
+      </button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Lịch sử gửi</h2>
+    <table class="kv">
+      <tr><th>Giữ</th><td>{{ state.notification_months }} tháng{{ ' — đã tắt' if not state.notification_months }}</td></tr>
+      <tr><th>Mốc cắt</th><td class="mono">{{ state.notification_cutoff.strftime('%Y-%m-%d') if state.notification_cutoff else '—' }}</td></tr>
+      <tr><th>Đang có</th><td class="mono">{{ state.notifications_total }}</td></tr>
+      <tr><th>Sẽ xoá ở lần chạy tới</th><td class="mono">{{ state.notifications_due }}</td></tr>
+      <tr>
+        <th>Đang chờ gửi lại</th>
+        <td class="mono">{{ state.notifications_inflight }}</td>
+      </tr>
+    </table>
+    <p class="hint">
+      Dòng <b>đang chờ gửi lại</b> không bao giờ bị xoá, dù cũ đến đâu: đó là
+      lần gửi chưa xảy ra, xoá đi là mất alert mà không còn dấu vết.
+    </p>
+    {% if can_run %}
+    <form method="post" action="/settings/retention/run?what=notifications" style="margin-top:12px">
+      <button type="submit"
+              onclick="return confirm('Xoá {{ state.notifications_due }} bản ghi gửi cũ hơn mốc cắt? Không hoàn tác được.')">
+        Chạy ngay
+      </button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+{% if not can_run %}
+<p class="hint">Chạy dọn thủ công cần vai trò <em>admin</em>.</p>
+{% endif %}
+
+<section class="card">
+  <h2>Vì sao hai cửa sổ khác nhau</h2>
+  <p class="muted">
+    Alert là bản ghi <em>chuyện gì đã xảy ra</em>; lịch sử gửi là dữ liệu gỡ lỗi
+    cho câu <em>nó có đi được không</em> — câu đó được hỏi trong vài ngày, và
+    bảng thì nặng hơn (một dòng cho mỗi channel, mỗi lần thử, kèm cả output
+    render khi template hỏng).
+  </p>
+  <p class="muted">
+    Lịch sử gửi chỉ có tác dụng khi <b>ngắn hơn</b> cửa sổ alert: xoá alert là
+    các dòng gửi đi theo bằng <code>ON DELETE CASCADE</code>. Đặt bằng hoặc dài
+    hơn thì OpsTrail cảnh báo lúc khởi động.
+  </p>
+</section>
+{% endblock %}

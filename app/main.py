@@ -10,7 +10,17 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api import auth, labels, owners, stats, templates_admin, ui, users, webhooks
+from app.api import (
+    auth,
+    labels,
+    owners,
+    retention_admin,
+    stats,
+    templates_admin,
+    ui,
+    users,
+    webhooks,
+)
 from app.config import get_settings
 from app.scheduler import build_scheduler
 from app.security import NotAuthenticated
@@ -89,6 +99,17 @@ async def lifespan(app: FastAPI):
     elif mode not in ("none", "bearer", "entra"):
         log.warning("MSTEAMS_AUTH=%r is not a known mode; treating as none", mode)
 
+    # Delivery rows are removed with their alert by ON DELETE CASCADE, so a
+    # notification window at or beyond the alert window never gets to run --
+    # the operator has configured something that cannot take effect.
+    if 0 < settings.alert_retention_months <= settings.notification_retention_months:
+        log.warning(
+            "NOTIFICATION_RETENTION_MONTHS=%d is not shorter than "
+            "ALERT_RETENTION_MONTHS=%d -- delivery records are already removed "
+            "with their alert, so the setting has no effect.",
+            settings.notification_retention_months, settings.alert_retention_months,
+        )
+
     sweeper = asyncio.create_task(dispatch.dispatch_loop())
     scheduler = build_scheduler()
     scheduler.start()
@@ -130,6 +151,7 @@ app.include_router(users.router)
 app.include_router(labels.router)
 app.include_router(owners.router)
 app.include_router(templates_admin.router)
+app.include_router(retention_admin.router)
 app.include_router(ui.router)
 
 

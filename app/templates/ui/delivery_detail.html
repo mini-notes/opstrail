@@ -1,0 +1,74 @@
+{% extends "ui/base.html" %}
+{% set active = 'deliveries' %}
+{% block title %}Delivery {{ note.id }} · OpsTrail{% endblock %}
+{% block content %}
+<p><a class="link" href="/deliveries">← Deliveries</a></p>
+
+<h1>
+  <span class="pill {{ note.status.value }}">{{ note.status.value }}</span>
+  {{ note.channel.value }} · delivery {{ note.id }}
+</h1>
+
+<div class="cols">
+  <section class="card">
+    <h2>Attempt</h2>
+    <table class="kv">
+      <tr><th>Outcome</th><td><span class="pill {{ note.status.value }}">{{ note.status.value }}</span></td></tr>
+      <tr><th>Tries</th><td class="mono">{{ note.attempts }}</td></tr>
+      <tr><th>HTTP</th><td class="mono">{{ note.response_status or '—' }}</td></tr>
+      <tr><th>Duration</th><td class="mono">{{ '%.0f ms'|format(note.duration_ms) if note.duration_ms else '—' }}</td></tr>
+      <tr><th>Queued</th><td class="mono">{{ note.created_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td></tr>
+      <tr><th>Sent</th><td class="mono">{{ note.sent_at.strftime('%Y-%m-%d %H:%M:%S') ~ ' UTC' if note.sent_at else '—' }}</td></tr>
+      <tr><th>Next try</th><td class="mono">{{ note.next_attempt_at.strftime('%Y-%m-%d %H:%M:%S') ~ ' UTC' if note.next_attempt_at else '—' }}</td></tr>
+      <tr>
+        <th>Target</th>
+        <td class="mono small">
+          {% if show_target %}
+            {{ note.target }}
+            <p class="hint">Đây là cả bí mật: ai có URL này là gửi được vào channel. Việc xem đã được ghi vào audit log.</p>
+          {% else %}
+            {{ note.target | redact_target }}
+            {% if can_reveal %}
+              <a class="link" href="?reveal=1">Hiện đầy đủ</a>
+            {% else %}
+              <span class="muted small">— URL đầy đủ chỉ admin xem được</span>
+            {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Alert</h2>
+    <table class="kv">
+      <tr><th>Name</th><td><a class="link" href="/alerts/{{ note.alert.id }}">{{ note.alert.alertname or '—' }}</a></td></tr>
+      <tr><th>Severity</th><td><span class="sev sev-{{ (note.alert.severity or 'unknown')|lower }}">{{ note.alert.severity or '—' }}</span></td></tr>
+      <tr><th>Status</th><td><span class="pill {{ note.alert.status.value }}">{{ note.alert.status.value }}</span></td></tr>
+      <tr><th>Service</th><td>{{ note.alert.service.key if note.alert.service else '—' }}</td></tr>
+      <tr><th>Team</th><td>{{ note.alert.team.key if note.alert.team else '—' }}</td></tr>
+      <tr><th>Started</th><td class="mono">{{ note.alert.starts_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td></tr>
+      <tr><th>Summary</th><td>{{ note.alert.summary or '—' }}</td></tr>
+    </table>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Chi tiết</h2>
+  {% if note.last_error %}
+    {% if note.status.value == 'sent' %}
+      <p class="note">
+        Gửi <b>thành công</b> nhưng ở chế độ suy giảm — thường là template tuỳ
+        chỉnh hỏng nên OpsTrail dùng template mặc định, hoặc thiếu thông tin
+        xác thực. Card vẫn tới nơi.
+      </p>
+    {% endif %}
+    {# A failed custom template puts its entire rendered output in here, which
+       is the most useful thing on this page and unreadable in a table cell --
+       the reason this is a page and not a row that expands. #}
+    <pre style="max-height:420px;overflow:auto"><code>{{ note.last_error }}</code></pre>
+  {% else %}
+    <p class="muted">Không có lỗi nào được ghi.</p>
+  {% endif %}
+</section>
+{% endblock %}

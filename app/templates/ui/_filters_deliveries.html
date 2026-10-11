@@ -1,0 +1,27 @@
+{# Filter fields for the delivery table. Included by _filters.html via
+   `filter_fields`; the search box, time window and Reset link live there.
+   Service and team filter the ALERT the delivery belongs to. #}
+  <select name="channel">
+    <option value="">Any channel</option>
+    {% for c in ['msteams', 'webhook'] %}
+      <option value="{{ c }}" {{ 'selected' if filters.channel == c }}>{{ c }}</option>
+    {% endfor %}
+  </select>
+  <select name="delivery_status">
+    <option value="">Any outcome</option>
+    {% for s in ['sent', 'pending', 'failed'] %}
+      <option value="{{ s }}" {{ 'selected' if filters.delivery_status == s }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="service_id">
+    <option value="">All services</option>
+    {% for s in services %}
+      <option value="{{ s.id }}" {{ 'selected' if filters.service_id == s.id }}>{{ s.key }}</option>
+    {% endfor %}
+  </select>
+  <select name="team_id">
+    <option value="">All teams</option>
+    {% for t in teams %}
+      <option value="{{ t.id }}" {{ 'selected' if filters.team_id == t.id }}>{{ t.key }}</option>
+    {% endfor %}
+  </select>

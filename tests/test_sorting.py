@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.pagination import PAGE_SIZES, paginate, resolve_size
 from app.api.sorting import ASC, DESC, SortSpec, severity_rank
+from app.api.ui import DELIVERY_SORTS
 from app.db import Base
 from app.models import Alert, AlertStatus
 
@@ -186,3 +187,26 @@ async def test_page_is_clamped_to_the_last_page(session):
     pg = await paginate(session, select(Alert), page=999, size=25, spec=SPEC)
     assert pg.page == pg.pages == 2
     assert len(pg.items) == 5
+
+
+# ---------------------------------------------------------------------------
+# the delivery table's sort spec
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "bad",
+    ["notifications.target", "id; drop table notifications", "", "created_at"],
+)
+def test_delivery_sort_rejects_column_names_from_the_url(bad):
+    """Same rule as the alert table: `?sort=` names a key we published, never
+    a column. `created_at` is in the list on purpose -- it is the real column
+    name, and the published key is `created`."""
+    assert DELIVERY_SORTS.resolve(bad, None).key == "created"
+
+
+def test_delivery_sort_has_a_tiebreaker():
+    """`status` and `channel` have two and three distinct values across the
+    whole table, so a sort on either is almost entirely ties. Without a
+    tiebreaker, LIMIT/OFFSET puts one row on two pages and loses another."""
+    clauses = DELIVERY_SORTS.resolve("status", DESC).clauses()
+    assert "notifications.id" in str(clauses[-1])

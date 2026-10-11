@@ -364,6 +364,10 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         Index("ix_notifications_retry", "status", "next_attempt_at"),
+        # The delivery history page sorts on this by default and the
+        # notification purge scans it; the retry index serves neither, since
+        # it leads on `status`.
+        Index("ix_notifications_created_at", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -392,6 +396,10 @@ class Notification(Base):
     sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # The delivery list shows the alert name and filters by its service/team;
+    # without this the page is one query per row.
+    alert: Mapped["Alert"] = relationship(lazy="raise")
 
 
 class AuditLog(Base):

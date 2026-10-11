@@ -6,6 +6,7 @@ one Environment for both would make an alert annotation an XSS vector.
 """
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi.templating import Jinja2Templates
 
@@ -36,3 +37,30 @@ def _asset_version() -> str:
 # Computed once at import: the files cannot change under a running process
 # without a restart, and stat-ing the tree per request would be wasteful.
 templates.env.globals["asset_v"] = _asset_version()
+
+
+def redact_target(target: str | None) -> str:
+    """A webhook URL with its secret removed.
+
+    `notifications.target` is a Power Automate trigger URL, and that URL IS
+    the credential -- whoever has it can post into the channel, which is why
+    app/notifiers/msteams.py can authenticate with nothing else. Printing it
+    in full on a page any viewer can open hands it out; printing it on every
+    row of a searchable list hands out all of them.
+
+    Enough is kept to tell two teams' webhooks apart. The signature and the
+    flow id are not.
+    """
+    if not target:
+        return "—"
+    try:
+        parsed = urlparse(target)
+    except ValueError:
+        return "(unparseable target)"
+    if not parsed.netloc:
+        return "(hidden)"
+    head = parsed.path.strip("/").split("/", 1)[0]
+    return f"{parsed.netloc}/{head}/…" if head else f"{parsed.netloc}/…"
+
+
+templates.env.filters["redact_target"] = redact_target

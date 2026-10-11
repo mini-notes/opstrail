@@ -18,10 +18,11 @@ from sqlalchemy.orm import selectinload
 from app.api.pagination import ALERT_PAGE_SIZE, paginate, resolve_size
 from app.api.params import OptInt, OptStr
 from app.api.sorting import SortSpec, severity_rank
+from app.config import get_settings
 from app.db import get_session
 from app.models import Alert, LabelSource, Notification, Service, Team, User, UserRole
 from app.security import current_user, require_role
-from app.services import audit, stats
+from app.services import audit, retention, stats
 from app.templating import templates
 
 log = logging.getLogger(__name__)
@@ -45,6 +46,103 @@ ALERT_SORTS = SortSpec(
     tiebreaker=Alert.id,
     default_desc=True,
 )
+
+
+# Sortable columns of the delivery table. The tiebreaker matters more here
+# than on alerts: `status` and `channel` have two and three distinct values
+# across the whole table, so without it a page boundary lands in the middle of
+# a huge tie and rows duplicate or vanish between pages.
+DELIVERY_SORTS = SortSpec(
+    columns={
+        "created": Notification.created_at,
+        "sent": Notification.sent_at,
+        "channel": Notification.channel,
+        "status": Notification.status,
+        "attempts": Notification.attempts,
+        "http": Notification.response_status,
+        "duration": Notification.duration_ms,
+        "alert": Alert.alertname,
+        "severity": severity_rank(Alert.severity),
+    },
+    default="created",
+    tiebreaker=Notification.id,
+    default_desc=True,
+)
+
+
+def empty_delivery_reason(
+    alert: Alert, cutoff: datetime | None, months: int
+) -> str | None:
+    """Why a delivery table is empty, or None when it is not empty.
+
+    An empty table is ambiguous and the two meanings matter: an alert nobody
+    was told about is a configuration bug to chase, while an alert whose
+    records aged out is nothing at all. Rendering the same blank table for
+    both makes the first one invisible.
+
+    `notify_count` is the strong signal -- it lives on the alert, so it
+    survives the purge, and a non-zero count with no rows PROVES the records
+    were deleted. With a zero count all we have is the alert's age, and past
+    the cutoff "a failed attempt was purged" and "nothing was ever queued"
+    are genuinely indistinguishable. Say that, rather than claiming the
+    stronger of the two.
+    """
+    if alert.notify_count:
+        return (
+            f"Đã gửi {alert.notify_count}× — bản ghi chi tiết đã bị xoá theo "
+            f"retention {months} tháng."
+        )
+    if cutoff is not None and alert.starts_at < cutoff:
+        return (
+            f"Không còn bản ghi gửi nào được giữ (retention {months} tháng). "
+            "Alert này cũ hơn mốc đó, nên không phân biệt được 'từng gửi "
+            "thất bại' với 'chưa từng gửi'."
+        )
+    return "Chưa từng gửi — không có channel nào được cấu hình cho alert này."
+
+
+def _delivery_query(
+    *,
+    channel: str | None,
+    delivery_status: str | None,
+    service_id: int | None,
+    team_id: int | None,
+    q: str | None,
+    days: int | None,
+):
+    """Deliveries, filtered.
+
+    The time window is on `Notification.created_at`, NOT `Alert.starts_at` --
+    deliberately different from stats.notification_health, which scopes by
+    when the alert started. A retry of a two-day-old alert happened today, and
+    on a page whose subject is deliveries "last 24h" has to mean deliveries.
+    Do not "fix" one to match the other.
+    """
+    stmt = select(Notification).join(Alert, Alert.id == Notification.alert_id)
+    if channel:
+        stmt = stmt.where(Notification.channel == channel)
+    if delivery_status:
+        stmt = stmt.where(Notification.status == delivery_status)
+    if service_id:
+        stmt = stmt.where(Alert.service_id == service_id)
+    if team_id:
+        stmt = stmt.where(Alert.team_id == team_id)
+    if q:
+        like = f"%{q}%"
+        # `target` is searchable but never displayed in full: finding every
+        # delivery to one team's webhook is a normal thing to want.
+        stmt = stmt.where(
+            or_(
+                Alert.alertname.ilike(like),
+                Notification.last_error.ilike(like),
+                Notification.target.ilike(like),
+            )
+        )
+    if days:
+        stmt = stmt.where(
+            Notification.created_at >= datetime.now(UTC) - timedelta(days=days)
+        )
+    return stmt
 
 
 async def unlabelled_count(session: AsyncSession) -> int:
@@ -242,6 +340,7 @@ async def alert_detail(
     )
     teams = (await session.execute(select(Team).order_by(Team.key))).scalars().all()
 
+    months = get_settings().notification_retention_months
     return templates.TemplateResponse(
         request,
         "ui/alert_detail.html",
@@ -250,6 +349,13 @@ async def alert_detail(
             "unlabelled_count": await unlabelled_count(session),
             "alert": alert,
             "notifications": notifications,
+            "empty_reason": (
+                None
+                if notifications
+                else empty_delivery_reason(
+                    alert, retention.notification_cutoff(), months
+                )
+            ),
             "services": services,
             "teams": teams,
             "can_edit": user.role in (UserRole.editor, UserRole.admin),
@@ -332,5 +438,120 @@ async def dashboard_page(
             "services": services,
             "teams": teams,
             "headline": await stats.headline(session, scope),
+            "notification_months": get_settings().notification_retention_months,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# delivery history
+# ---------------------------------------------------------------------------
+
+@router.get("/deliveries")
+async def deliveries_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    channel: OptStr = None,
+    delivery_status: OptStr = None,
+    service_id: OptInt = None,
+    team_id: OptInt = None,
+    q: OptStr = None,
+    days: OptInt = None,
+    size: OptInt = None,
+    sort: OptStr = None,
+    dir: OptStr = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Every delivery OpsTrail has attempted, newest first.
+
+    The dashboard chart answers "how many failed"; this answers "which one,
+    and what did the other end say".
+    """
+    filters = {
+        "channel": channel,
+        "delivery_status": delivery_status,
+        "service_id": service_id,
+        "team_id": team_id,
+        "q": q,
+        "days": days,
+    }
+    stmt = _delivery_query(**filters).options(
+        selectinload(Notification.alert).selectinload(Alert.service),
+        selectinload(Notification.alert).selectinload(Alert.team),
+    )
+    pg = await paginate(
+        session, stmt, page=page, size=resolve_size(size, ALERT_PAGE_SIZE),
+        spec=DELIVERY_SORTS, sort_key=sort, sort_dir=dir,
+    )
+    services = (
+        (await session.execute(select(Service).order_by(Service.key))).scalars().all()
+    )
+    teams = (await session.execute(select(Team).order_by(Team.key))).scalars().all()
+
+    ctx = {
+        "user": user,
+        "unlabelled_count": await unlabelled_count(session),
+        "deliveries": pg.items,
+        "services": services,
+        "teams": teams,
+        "page_obj": pg,
+        "filters": filters,
+    }
+    if request.headers.get("hx-request") == "true":
+        return templates.TemplateResponse(request, "ui/_delivery_table.html", ctx)
+    return templates.TemplateResponse(request, "ui/deliveries.html", ctx)
+
+
+@router.get("/deliveries/{note_id}")
+async def delivery_detail(
+    note_id: int,
+    request: Request,
+    reveal: bool = False,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """One delivery in full.
+
+    A page rather than a row that expands: `last_error` holds up to 2000
+    characters and a failed custom template puts its entire rendered output
+    in there, which is both the most useful thing here and unreadable in a
+    table cell. It is also a link somebody can paste into a ticket.
+    """
+    note = (
+        await session.execute(
+            select(Notification)
+            .options(
+                selectinload(Notification.alert).selectinload(Alert.service),
+                selectinload(Notification.alert).selectinload(Alert.team),
+            )
+            .where(Notification.id == note_id)
+        )
+    ).scalar_one_or_none()
+    if note is None:
+        return templates.TemplateResponse(
+            request, "ui/not_found.html", {"user": user, "alert_id": note_id},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    # The full target is the credential that can post into the channel, so
+    # revealing it is an admin action and is recorded like one.
+    show_target = reveal and user.role is UserRole.admin
+    if show_target:
+        await audit.record(
+            session, user, "notification.target.reveal",
+            object_type="notification", object_id=note.id,
+        )
+        await session.commit()
+
+    return templates.TemplateResponse(
+        request,
+        "ui/delivery_detail.html",
+        {
+            "user": user,
+            "unlabelled_count": await unlabelled_count(session),
+            "note": note,
+            "show_target": show_target,
+            "can_reveal": user.role is UserRole.admin,
         },
     )

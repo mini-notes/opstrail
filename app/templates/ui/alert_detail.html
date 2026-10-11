@@ -71,7 +71,7 @@
 <section class="card">
   <h2>Delivery</h2>
   <table class="grid">
-    <thead><tr><th>Channel</th><th>Status</th><th>Attempts</th><th>HTTP</th><th>Duration</th><th>Target</th><th>Error</th></tr></thead>
+    <thead><tr><th>Channel</th><th>Status</th><th>Attempts</th><th>HTTP</th><th>Duration</th><th>Target</th><th>Error</th><th></th></tr></thead>
     <tbody>
     {% for n in notifications %}
       <tr>
@@ -80,11 +80,12 @@
         <td>{{ n.attempts }}</td>
         <td class="mono">{{ n.response_status or '—' }}</td>
         <td class="mono">{{ '%.0f ms'|format(n.duration_ms) if n.duration_ms else '—' }}</td>
-        <td class="mono small">{{ n.target }}</td>
+        <td class="mono small">{{ n.target | redact_target }}</td>
         <td class="small">{{ n.last_error or '' }}</td>
+        <td><a class="link" href="/deliveries/{{ n.id }}">detail</a></td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="empty">No delivery attempts recorded.</td></tr>
+      <tr><td colspan="8" class="empty">{{ empty_reason }}</td></tr>
     {% endfor %}
     </tbody>
   </table>

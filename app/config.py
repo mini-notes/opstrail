@@ -103,6 +103,12 @@ class Settings(BaseSettings):
 
     # --- retention ---
     alert_retention_months: int = 6
+    # Deliveries age out faster than the alerts they belong to: "did it go
+    # out" is asked within days, and the rows are bulkier (one per channel
+    # per attempt, and a broken template parks its whole rendered output in
+    # last_error). Only has any effect while it is SHORTER than the alert
+    # window -- ON DELETE CASCADE gets there first otherwise.
+    notification_retention_months: int = 3
     retention_hour_utc: int = 3  # daily purge time
 
     @property

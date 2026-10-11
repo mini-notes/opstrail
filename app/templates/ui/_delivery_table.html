@@ -1,0 +1,48 @@
+{# The id here is what the filter/sort/pager controls swap, so it must match
+   the `hx_target` they are given. #}
+<div id="deliveryTable">
+<table class="grid stick">
+  <thead><tr>
+    {% with hx = True, hx_target = '#deliveryTable' %}
+    {% with key='created',  label='Attempted' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='status',   label='Outcome'   %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='channel',  label='Channel'   %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='alert',    label='Alert'     %}{% include "ui/_sorth.html" %}{% endwith %}
+    <th>Service</th>
+    {% with key='attempts', label='Tries'     %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='http',     label='HTTP'      %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% with key='duration', label='Duration'  %}{% include "ui/_sorth.html" %}{% endwith %}
+    <th>Target</th>
+    {% endwith %}
+  </tr></thead>
+  <tbody>
+  {% for n in deliveries %}
+    <tr onclick="location='/deliveries/{{ n.id }}'">
+      <td class="mono">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>
+        <span class="pill {{ n.status.value }}">{{ n.status.value }}</span>
+        {% if n.last_error and n.status.value == 'sent' %}
+          {# A sent row with an error carries a degraded-send note: the card
+             went out, but on the built-in template or with no credentials. #}
+          <span class="tag none" title="{{ n.last_error }}">degraded</span>
+        {% endif %}
+      </td>
+      <td>{{ n.channel.value }}</td>
+      <td class="name">
+        {{ n.alert.alertname or '—' }}<br>
+        <span class="muted">{{ n.alert.summary or '' }}</span>
+      </td>
+      <td>{{ n.alert.service.key if n.alert.service else '—' }}</td>
+      <td class="mono">{{ n.attempts }}</td>
+      <td class="mono">{{ n.response_status or '—' }}</td>
+      <td class="mono">{{ '%.0f ms'|format(n.duration_ms) if n.duration_ms else '—' }}</td>
+      <td class="mono small">{{ n.target | redact_target }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="empty">No deliveries match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% with hx = True, hx_target = '#deliveryTable' %}{% include "ui/_pager.html" %}{% endwith %}
+</div>

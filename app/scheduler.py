@@ -10,7 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.config import get_settings
-from app.services.retention import purge_old_alerts
+from app.services.retention import purge_old_alerts, purge_old_notifications
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +28,21 @@ def build_scheduler() -> AsyncIOScheduler:
         coalesce=True,
         replace_existing=True,
     )
+    # Fifteen minutes after the alert purge rather than alongside it: both
+    # delete in batches with a commit per batch, and interleaving two of those
+    # on the same database buys nothing.
+    scheduler.add_job(
+        purge_old_notifications,
+        CronTrigger(hour=settings.retention_hour_utc, minute=15),
+        id="purge_old_notifications",
+        misfire_grace_time=3600,
+        coalesce=True,
+        replace_existing=True,
+    )
     log.info(
-        "scheduler: retention job at %02d:00 UTC, keeping %d month(s)",
+        "scheduler: retention at %02d:00 UTC keeping %d month(s) of alerts, "
+        "%02d:15 keeping %d month(s) of delivery records",
         settings.retention_hour_utc, settings.alert_retention_months,
+        settings.retention_hour_utc, settings.notification_retention_months,
     )
     return scheduler
