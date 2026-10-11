@@ -216,8 +216,12 @@ button.link{background:none;border:0;color:var(--accent);cursor:pointer;font:inh
 .htmx-request .filters .busy{opacity:1}
 
 /* table */
+/* `clip` rather than `hidden`: both cut the corners off the rounded border,
+   but `hidden` makes the table a scroll container, and a scroll container
+   kills `position:sticky` on the <th> inside it. Safari below 16 has no
+   `clip` and falls back to visible -- square corners, table still works. */
 .grid{width:100%;border-collapse:collapse;background:var(--panel);
-  border:1px solid var(--grid);border-radius:var(--radius);overflow:hidden}
+  border:1px solid var(--grid);border-radius:var(--radius);overflow:clip}
 .grid th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
   color:var(--dim);padding:9px 12px;border-bottom:1px solid var(--grid);font-weight:600}
 .grid td{padding:9px 12px;border-bottom:1px solid var(--grid);vertical-align:top}
@@ -230,6 +234,13 @@ button.link{background:none;border:0;color:var(--accent);cursor:pointer;font:inh
 .kv th{text-align:left;color:var(--dim);font-weight:500;padding:4px 12px 4px 0;
   white-space:nowrap;vertical-align:top}
 .kv td{padding:4px 0;word-break:break-word}
+/* Only list tables stick. Nine templates use .grid and most are short tables
+   inside .card, where the background is transparent (see `.card .grid` above)
+   -- a sticky header there would have rows showing through it.
+   top:52px clears the sticky .topbar; without the offset the column headings
+   slide underneath it. */
+.grid.stick thead th{position:sticky;top:52px;z-index:5;background:var(--panel)}
+
 #alertTable{transition:opacity .12s ease}
 #alertTable.htmx-request{opacity:.45}
 

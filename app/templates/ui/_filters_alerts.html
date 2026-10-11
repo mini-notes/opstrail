@@ -1,0 +1,32 @@
+{# Filter fields specific to the alert tables. Included by _filters.html via
+   `filter_fields`; the search box, time window and Reset link live there. #}
+  <select name="service_id">
+    <option value="">All services</option>
+    {% for s in services %}
+      <option value="{{ s.id }}" {{ 'selected' if filters.service_id == s.id }}>{{ s.key }}</option>
+    {% endfor %}
+  </select>
+  <select name="team_id">
+    <option value="">All teams</option>
+    {% for t in teams %}
+      <option value="{{ t.id }}" {{ 'selected' if filters.team_id == t.id }}>{{ t.key }}</option>
+    {% endfor %}
+  </select>
+  <select name="severity">
+    <option value="">Any severity</option>
+    {% for s in ['critical','error','warning','info'] %}
+      <option value="{{ s }}" {{ 'selected' if filters.severity == s }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="alert_status">
+    <option value="">Any status</option>
+    <option value="firing" {{ 'selected' if filters.alert_status == 'firing' }}>firing</option>
+    <option value="resolved" {{ 'selected' if filters.alert_status == 'resolved' }}>resolved</option>
+  </select>
+  <select name="label_source">
+    <option value="">Any label source</option>
+    <option value="payload" {{ 'selected' if filters.label_source == 'payload' }}>payload</option>
+    <option value="rule" {{ 'selected' if filters.label_source == 'rule' }}>rule</option>
+    <option value="manual" {{ 'selected' if filters.label_source == 'manual' }}>manual</option>
+    <option value="none" {{ 'selected' if filters.label_source == 'none' }}>unlabelled</option>
+  </select>

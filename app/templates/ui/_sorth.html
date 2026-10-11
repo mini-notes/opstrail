@@ -1,6 +1,7 @@
 {#- Sortable column header.
-    Params: key (sort key), label (text), and optionally hx (true) to swap
-    the alert table in place instead of reloading the page.
+    Params: key (sort key), label (text), optionally hx (true) to swap the
+    table in place instead of reloading the page, and hx_target (the element
+    to swap; defaults to the alert table, so existing callers are unchanged).
 
     Rebuilds the query string minus page/sort/dir so the current filters and
     page size survive, and resets to page 1 -- staying on page 7 of a
@@ -9,10 +10,11 @@
 {%- set active = page_obj.sort and page_obj.sort.key == key -%}
 {%- set nextdir = page_obj.sort.next_direction(key) if page_obj.sort else 'desc' -%}
 {%- set href = '?sort=' ~ key ~ '&dir=' ~ nextdir ~ ('&' ~ base if base else '') -%}
+{%- set tgt = hx_target|default('#alertTable') -%}
 <th class="sortable {{ 'sorted' if active }}">
   <a href="{{ href }}"
-     {%- if hx %} hx-get="{{ href }}" hx-target="#alertTable" hx-swap="outerHTML"
-     hx-push-url="true" hx-indicator="#alertTable"{% endif %}
+     {%- if hx %} hx-get="{{ href }}" hx-target="{{ tgt }}" hx-swap="outerHTML"
+     hx-push-url="true" hx-indicator="{{ tgt }}"{% endif %}
      title="Sort by {{ label }}">
     {{ label }}
     <span class="arrow">{% if active %}{{ '↓' if page_obj.sort.desc else '↑' }}{% else %}↕{% endif %}</span>

@@ -3,44 +3,26 @@
 
    hx-trigger on change/input means picking a dropdown reloads just the table.
    The form still works with JavaScript off: the Filter button does a normal
-   GET and the server renders the full page. #}
+   GET and the server renders the full page.
+
+   This file is the shell: the search box, the time window, the Reset link and
+   all of the HTMX wiring, which every list page wants identically. The fields
+   that differ per page come from `filter_fields`. Branching inside here on a
+   per-page flag instead would add one mutually-exclusive block per list page.
+
+   Params: reset_url, filters, optionally filter_fields (a template path) and
+   hx_target (defaults to the alert table). #}
+{% set tgt = hx_target|default('#alertTable') %}
 <form class="filters" method="get"
-      hx-get="{{ reset_url }}" hx-target="#alertTable" hx-swap="outerHTML"
+      hx-get="{{ reset_url }}" hx-target="{{ tgt }}" hx-swap="outerHTML"
       hx-trigger="change, search, input from:find input[type=search] delay:400ms"
-      hx-push-url="true" hx-indicator="#alertTable">
-  <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Search name or summary">
-  {% if show_attribution %}
-  <select name="service_id">
-    <option value="">All services</option>
-    {% for s in services %}
-      <option value="{{ s.id }}" {{ 'selected' if filters.service_id == s.id }}>{{ s.key }}</option>
-    {% endfor %}
-  </select>
-  <select name="team_id">
-    <option value="">All teams</option>
-    {% for t in teams %}
-      <option value="{{ t.id }}" {{ 'selected' if filters.team_id == t.id }}>{{ t.key }}</option>
-    {% endfor %}
-  </select>
-  <select name="severity">
-    <option value="">Any severity</option>
-    {% for s in ['critical','error','warning','info'] %}
-      <option value="{{ s }}" {{ 'selected' if filters.severity == s }}>{{ s }}</option>
-    {% endfor %}
-  </select>
-  <select name="alert_status">
-    <option value="">Any status</option>
-    <option value="firing" {{ 'selected' if filters.alert_status == 'firing' }}>firing</option>
-    <option value="resolved" {{ 'selected' if filters.alert_status == 'resolved' }}>resolved</option>
-  </select>
-  <select name="label_source">
-    <option value="">Any label source</option>
-    <option value="payload" {{ 'selected' if filters.label_source == 'payload' }}>payload</option>
-    <option value="rule" {{ 'selected' if filters.label_source == 'rule' }}>rule</option>
-    <option value="manual" {{ 'selected' if filters.label_source == 'manual' }}>manual</option>
-    <option value="none" {{ 'selected' if filters.label_source == 'none' }}>unlabelled</option>
-  </select>
-  {% endif %}
+      hx-push-url="true" hx-indicator="{{ tgt }}">
+  {# The form submits its own fields and nothing else, so without this a
+     filter change silently resets a chosen page size back to the default. #}
+  {% if page_obj %}<input type="hidden" name="size" value="{{ page_obj.size }}">{% endif %}
+  <input type="search" name="q" value="{{ filters.q or '' }}"
+         placeholder="{{ search_placeholder|default('Search name or summary') }}">
+  {% if filter_fields %}{% include filter_fields %}{% endif %}
   <select name="days">
     <option value="">All time</option>
     {% for d in [1, 7, 30, 90] %}

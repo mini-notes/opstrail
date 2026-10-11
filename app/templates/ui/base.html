@@ -19,8 +19,8 @@
   } catch (e) { /* private mode: fall back to the defaults */ }
 })();
 </script>
-<link rel="stylesheet" href="/static/app.css">
-<script src="/static/vendor/htmx.min.js" defer></script>
+<link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
+<script src="/static/vendor/htmx.min.js?v={{ asset_v }}" defer></script>
 {% block head %}{% endblock %}
 </head>
 {# `content` is declared exactly once: Jinja rejects a block name defined

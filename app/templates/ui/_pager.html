@@ -2,13 +2,14 @@
    survive paging -- losing them on page 2 is the classic admin-table
    annoyance. The size selector drops `page` too, because row 1200 does not
    exist once you switch from 25 to 100 per page. #}
+{% set tgt = hx_target|default('#alertTable') %}
 {% set qs = request.url.remove_query_params('page').query %}
 {% set sizeqs = request.url.remove_query_params(['page', 'size']).query %}
 <div class="pager">
   {% if page_obj.has_prev %}
     <a href="?page={{ page_obj.page - 1 }}{{ '&' ~ qs if qs }}"
        {% if hx %}hx-get="?page={{ page_obj.page - 1 }}{{ '&' ~ qs if qs }}"
-       hx-target="#alertTable" hx-swap="outerHTML" hx-push-url="true"{% endif %}>← Prev</a>
+       hx-target="{{ tgt }}" hx-swap="outerHTML" hx-push-url="true"{% endif %}>← Prev</a>
   {% endif %}
   <span class="muted">
     {% if page_obj.total %}
@@ -21,7 +22,7 @@
   {% if page_obj.has_next %}
     <a href="?page={{ page_obj.page + 1 }}{{ '&' ~ qs if qs }}"
        {% if hx %}hx-get="?page={{ page_obj.page + 1 }}{{ '&' ~ qs if qs }}"
-       hx-target="#alertTable" hx-swap="outerHTML" hx-push-url="true"{% endif %}>Next →</a>
+       hx-target="{{ tgt }}" hx-swap="outerHTML" hx-push-url="true"{% endif %}>Next →</a>
   {% endif %}
 
   <span class="pagesize">

@@ -1,7 +1,7 @@
 {% extends "ui/base.html" %}
 {% set active = 'dashboard' %}
 {% block title %}Dashboard · OpsTrail{% endblock %}
-{% block head %}<script src="/static/vendor/chart.umd.min.js" defer></script>{% endblock %}
+{% block head %}<script src="/static/vendor/chart.umd.min.js?v={{ asset_v }}" defer></script>{% endblock %}
 {% block content %}
 <h1>Dashboard</h1>
 
