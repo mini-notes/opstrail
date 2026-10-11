@@ -82,6 +82,12 @@ class Service(Base):
     )
     # Free-form classification used by the dashboards: api / worker / db / ...
     app_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Criticality band, surfaced to template_rules as a `tier` key. Prometheus
+    # never sends this -- it is OpsTrail's own classification, which is
+    # exactly why a rule needs it: "tier 1 gets the loud card" cannot be
+    # written against alert labels alone. NULL means unclassified, and a rule
+    # with a tier condition simply does not match those rather than guessing.
+    tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # NULL means "inherit from the team"; the team's own NULL falls back to
     # the global default.
     mention_severity: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -250,11 +256,25 @@ class MessageTemplate(Base):
     file in `app/templates/msteams/` stays as the fallback: if no row is
     active, or if a saved template fails to render for a particular alert,
     the built-in one is used so notifications never stop.
+
+    There can be many per channel. `is_active` marks the one used when no
+    `template_rules` row matches -- the catch-all. Which template an alert
+    gets is otherwise decided by those rules.
     """
 
     __tablename__ = "message_templates"
     __table_args__ = (
         Index("ix_message_templates_active", "channel", "is_active"),
+        # Exactly one catch-all per channel, enforced by the database. Both
+        # readers select it with LIMIT 1 and no ORDER BY, so two active rows
+        # would make "which template sent this card" genuinely undefined.
+        Index(
+            "ux_message_templates_default",
+            "channel",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+        UniqueConstraint("channel", "name", name="uq_message_templates_channel_name"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -275,6 +295,43 @@ class MessageTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class TemplateRule(Base):
+    """Which message template an alert gets.
+
+    Mirrors `label_rules` on purpose -- same `match` shape, same glob
+    semantics, same "lowest priority number wins" ordering -- so an operator
+    who has written one of them has already learned the other.
+
+    Matching runs against the alert's own labels plus a few keys OpsTrail
+    derives; app/services/template_select.py defines exactly which, and why
+    the alert's labels win when the two disagree.
+
+    No match is not an error: the alert falls through to the catch-all
+    template, and from there to the built-in file. A routing rule must never
+    be the reason a card does not go out.
+    """
+
+    __tablename__ = "template_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    priority: Mapped[int] = mapped_column(
+        Integer, default=100, server_default="100", index=True
+    )
+    match: Mapped[dict] = mapped_column(JSONB)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("message_templates.id", ondelete="CASCADE"), index=True
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    template: Mapped["MessageTemplate"] = relationship(lazy="raise")
 
 
 class Alert(Base):

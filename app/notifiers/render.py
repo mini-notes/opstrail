@@ -189,6 +189,39 @@ def _facts(alert: Alert, service_name: str | None) -> list:
     return out
 
 
+# What a template may reference, documented next to the function that
+# produces it. The editor renders its variable table from this list.
+#
+# The previous table was hand-written in template_editor.html and had already
+# drifted: it never mentioned value_line or duration_line, the two variables
+# an operator most needs to know about, while the built-in template used
+# both. A test asserts this list and build_context() agree, so adding a key
+# without documenting it fails the suite rather than quietly going missing.
+CONTEXT_VARS: tuple[tuple[str, str], ...] = (
+    ("alert", "Toàn bộ bản ghi: alertname, severity, summary, description, "
+              "labels, annotations, starts_at, ends_at…"),
+    ("service", "Tên hiển thị của service. Rỗng nếu alert chưa gán nhãn"),
+    ("team", "Tên hiển thị của team. Rỗng nếu alert chưa gán nhãn"),
+    ("severity", "Đã chuẩn hoá: CRITICAL / ERROR / WARNING / INFO"),
+    ("status", "FIRING hoặc RESOLVED"),
+    ("icon", "Emoji theo severity"),
+    ("status_icon", "Emoji theo trạng thái"),
+    ("facts", "Danh sách (tiêu đề, giá trị) đã lọc bỏ trường rỗng"),
+    ("value_line", "Ví dụ `93% (ngưỡng 85%)`. **None** nếu alerting rule "
+                   "không gửi annotation value/threshold"),
+    ("duration_line", "Ví dụ `Đã xử lý sau 0:42:15`. None khi alert chưa kết thúc"),
+    ("owners", "Tên người phụ trách (luôn có nếu đã gán, kể cả khi không mention)"),
+    ("mention_entities", "Khối msteams.entities. Rỗng nếu chưa đạt ngưỡng "
+                         "severity hoặc chưa có owner"),
+    ("mention_text", "Chuỗi <at>Tên</at> khớp với entities. Rỗng khi không mention"),
+    ("generator_url", "Link đồ thị Prometheus"),
+    ("detail_url", "Link trang chi tiết trong OpsTrail"),
+    ("runbook_url", "Từ annotation runbook_url / runbook"),
+    ("dashboard_url", "Từ annotation dashboard_url / dashboard"),
+    ("silence_url", "Link tạo silence trong Alertmanager, dựng từ external_url"),
+)
+
+
 def build_context(
     alert: Alert,
     *,

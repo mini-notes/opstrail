@@ -1,0 +1,52 @@
+{# Preview pane. Swapped whole by HTMX as the operator types, so the id here
+   must match the hx-target on the textarea, and cardpreview.js redraws on
+   htmx:afterSwap rather than on load. #}
+<div id="tplPreview">
+  {% if preview_error %}
+    <p class="error">{{ preview_error }}</p>
+    <p class="hint">
+      Template vẫn chưa lưu. Alert đang gửi tiếp bằng template hiện hành —
+      lỗi ở đây không ảnh hưởng gì tới cảnh báo đang chạy.
+    </p>
+  {% else %}
+    <p class="note">
+      Đang render với
+      <b>{{ 'alert mẫu đầy đủ' if use_sample else 'alert thật gần nhất' }}</b>
+      {%- if preview_alert.alertname %} ({{ preview_alert.alertname }}){% endif %}.
+      {% if use_sample %}
+        <a href="/settings/template?id={{ selected.id if selected }}">← Dùng alert thật</a>
+      {% else %}
+        <a href="/settings/template?id={{ selected.id if selected }}&sample=1">Dùng alert mẫu đầy đủ →</a>
+      {% endif %}
+    </p>
+
+    {% if not has_value and not use_sample %}
+    <p class="note" style="color:var(--warn)">
+      Alert gần nhất <b>không có</b> annotation <code>value</code> /
+      <code>threshold</code>, nên card không có dòng số đo. Prometheus không tự
+      gửi giá trị metric — thêm vào alerting rule:
+      <code>value: '{{ '{{ printf "%.1f" $value }}' }}%'</code> và
+      <code>threshold: "85%"</code>.
+    </p>
+    {% endif %}
+
+    <div class="cardframe">
+      <div id="cardHost" hidden></div>
+      <p id="cardProblem" class="error" hidden></p>
+    </div>
+
+    <p class="hint">
+      <b>Đây là bản dựng xấp xỉ, không phải ảnh chụp Teams.</b> Cụ thể khác ở:
+      mention <code>&lt;at&gt;Tên&lt;/at&gt;</code> ở đây hiện ra chữ thô còn
+      Teams sẽ phân giải thành người thật; Teams dùng font, bề rộng và theme
+      riêng; các nút ở đây bấm không làm gì. Cần đối chiếu từng pixel thì dán
+      JSON dưới đây vào
+      <a href="https://adaptivecards.io/designer" target="_blank" rel="noopener noreferrer">Adaptive Cards Designer</a>.
+    </p>
+
+    <details>
+      <summary class="link">JSON gửi đi</summary>
+      <pre style="max-height:360px;overflow:auto"><code id="cardJson">{{ preview }}</code></pre>
+    </details>
+  {% endif %}
+</div>

@@ -9,6 +9,7 @@ pick it up after a restart.
 
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -19,7 +20,6 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.models import (
     Alert,
-    MessageTemplate,
     Notification,
     NotificationChannel,
     NotificationStatus,
@@ -28,7 +28,7 @@ from app.models import (
 )
 from app.notifiers import msteams, webhook
 from app.notifiers.base import DeliveryResult
-from app.services import mention
+from app.services import mention, template_select
 
 log = logging.getLogger(__name__)
 
@@ -94,30 +94,17 @@ async def _targets(session: AsyncSession, alert: Alert) -> list[tuple[Notificati
     return out
 
 
-async def _names(session: AsyncSession, alert: Alert) -> tuple[str | None, str | None]:
-    service_name = team_name = None
-    if alert.service_id:
-        svc = await session.get(Service, alert.service_id)
-        service_name = svc.name if svc else None
-    if alert.team_id:
-        team = await session.get(Team, alert.team_id)
-        team_name = team.name if team else None
-    return service_name, team_name
+async def _attribution(
+    session: AsyncSession, alert: Alert
+) -> tuple[Service | None, Team | None]:
+    """The service and team rows this alert was attributed to.
 
-
-async def _active_template(session: AsyncSession, channel: NotificationChannel) -> str | None:
-    """Operator-saved template for this channel, or None to use the built-in."""
-    row = (
-        await session.execute(
-            select(MessageTemplate)
-            .where(
-                MessageTemplate.channel == channel,
-                MessageTemplate.is_active.is_(True),
-            )
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    return row.body if row else None
+    The rows rather than their names: the card wants the display name, and
+    template selection wants the key and the tier. One lookup serves both.
+    """
+    service = await session.get(Service, alert.service_id) if alert.service_id else None
+    team = await session.get(Team, alert.team_id) if alert.team_id else None
+    return service, team
 
 
 async def _mention_for(session: AsyncSession, alert: Alert):
@@ -140,14 +127,21 @@ async def _deliver(
     session: AsyncSession,
     alert: Alert,
     note: Notification,
-    service_name: str | None,
-    team_name: str | None,
+    service: Service | None,
+    team: Team | None,
     client: httpx.AsyncClient,
-) -> DeliveryResult:
+) -> tuple[DeliveryResult, str | None]:
+    """Send, and report any note about how the send was degraded."""
     settings = get_settings()
+    service_name = service.name if service else None
+    team_name = team.name if team else None
+
     if note.channel is NotificationChannel.msteams:
         entities, text, owner_names = await _mention_for(session, alert)
-        return await msteams.send(
+        source, select_note = await template_select.select_source(
+            session, alert, note.channel, service=service, team=team
+        )
+        result = await msteams.send(
             alert,
             note.target,
             service_name=service_name,
@@ -155,16 +149,21 @@ async def _deliver(
             mention_entities=entities,
             mention_text=text,
             owner_names=owner_names,
-            template_source=await _active_template(session, note.channel),
+            template_source=source,
             client=client,
         )
-    return await webhook.send(
-        alert,
-        note.target,
-        token=settings.outbound_webhook_token,
-        service_name=service_name,
-        team_name=team_name,
-        client=client,
+        return result, select_note
+
+    return (
+        await webhook.send(
+            alert,
+            note.target,
+            token=settings.outbound_webhook_token,
+            service_name=service_name,
+            team_name=team_name,
+            client=client,
+        ),
+        None,
     )
 
 
@@ -175,8 +174,16 @@ async def _attempt(session: AsyncSession, note: Notification, client: httpx.Asyn
         note.last_error = "alert row disappeared"
         return
 
-    service_name, team_name = await _names(session, alert)
-    result = await _deliver(session, alert, note, service_name, team_name, client)
+    service, team = await _attribution(session, alert)
+    result, select_note = await _deliver(session, alert, note, service, team, client)
+    if select_note:
+        # Rides out beside the delivery result the same way a template
+        # fallback does, so a degraded choice is visible on /deliveries
+        # rather than only in the logs.
+        result = replace(
+            result,
+            error="; ".join(filter(None, (select_note, result.error))),
+        )
 
     note.attempts += 1
     note.response_status = result.status_code

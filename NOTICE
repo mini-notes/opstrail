@@ -17,4 +17,8 @@ builds and remain under their own licenses:
   app/static/vendor/chart.umd.min.js
       Chart.js 4.4.7 — https://www.chartjs.org — MIT License
 
+  app/static/vendor/adaptivecards.min.js
+      Adaptive Cards 3.0.6 — https://adaptivecards.io — MIT License
+      Full text in app/static/vendor/adaptivecards.LICENSE.txt
+
 Refer to each project for the full text of its license.

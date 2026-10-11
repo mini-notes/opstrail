@@ -14,6 +14,7 @@ Toàn bộ biến môi trường và cách cắm MS Teams.
 | `OUTBOUND_WEBHOOK_URL` / `_TOKEN` | | |
 | `DISPATCH_GIVE_UP_AFTER_MINUTES` | `60` | |
 | `ALERT_RETENTION_MONTHS` | `6` | `0` = tắt purge |
+| `NOTIFICATION_RETENTION_MONTHS` | `3` | Lịch sử gửi. Chỉ có tác dụng khi **ngắn hơn** `ALERT_RETENTION_MONTHS` — xoá alert là các dòng gửi đi theo bằng CASCADE. Đặt bằng hoặc dài hơn thì cảnh báo lúc khởi động |
 | `RETENTION_HOUR_UTC` | `3` | |
 
 ### Xác thực khi gọi Power Automate

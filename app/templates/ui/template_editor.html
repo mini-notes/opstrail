@@ -1,6 +1,7 @@
 {% extends "ui/base.html" %}
 {% set active = 'template' %}
 {% block title %}Template Teams · OpsTrail{% endblock %}
+{% block head %}<script src="/static/vendor/adaptivecards.min.js?v={{ asset_v }}" defer></script>{% endblock %}
 {% block content %}
 <h1>Template MS Teams</h1>
 
@@ -8,95 +9,248 @@
 {% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
 
 <div class="good">
-  <b>Alert không bao giờ bị chặn vì template.</b> Hai lớp bảo vệ:
-  lúc <b>lưu</b> template được render thử — JSON sai thì không lưu được;
-  lúc <b>gửi</b> nếu template vẫn hỏng với một alert cụ thể, OpsTrail
-  <b>tự dùng template mặc định</b> và ghi lý do vào bảng notifications.
+  <b>Alert không bao giờ bị chặn vì template.</b> Ba lớp, theo thứ tự lùi:
+  rule không khớp → dùng <b>template mặc định</b>;
+  template mặc định hỏng với một alert cụ thể → dùng <b>template built-in trong image</b>;
+  lưu template sai JSON → <b>không lưu được</b>, template đang chạy giữ nguyên.
 </div>
 
-<p class="note">
-  Đang dùng: <b>{{ 'template tuỳ chỉnh (lưu trong DB)' if using_custom else 'template mặc định (file trong image)' }}</b>.
-  Cú pháp Jinja2, xuất thẳng JSON Adaptive Card. Mọi giá trị phải đi qua
-  <code>| tojson</code> — đừng viết <code>{{ '{{ value }}' }}</code> trần bên trong chuỗi JSON.
-</p>
+<div class="tplgrid">
+  <!-- ------------------------------------------------ templates ---------->
+  <section class="card">
+    <h2>Template</h2>
+    <table class="grid">
+      <thead><tr><th>Tên</th><th>Vai trò</th><th></th></tr></thead>
+      <tbody>
+      {% for t in templates %}
+        <tr>
+          <td>
+            {% if selected and t.id == selected.id %}
+              <b>{{ t.name }}</b>
+            {% else %}
+              <a class="link" href="/settings/template?id={{ t.id }}">{{ t.name }}</a>
+            {% endif %}
+          </td>
+          <td>
+            {% if t.is_active %}<span class="tag payload">mặc định</span>
+            {% else %}<span class="muted small">theo rule</span>{% endif %}
+          </td>
+          <td>
+            {% if can_edit and not t.is_active %}
+            <form method="post" action="/settings/template/default" style="display:inline">
+              <input type="hidden" name="id" value="{{ t.id }}">
+              <button class="secondary small" type="submit">Đặt mặc định</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="empty">
+          Chưa có template nào — đang dùng template built-in trong image.
+        </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    {% if can_edit %}
+    <form method="post" action="/settings/template/new" style="margin-top:12px;display:flex;gap:8px">
+      <input name="name" placeholder="tên template mới" required>
+      <button type="submit">Tạo</button>
+    </form>
+    <p class="hint">Template mới bắt đầu bằng bản sao của built-in.</p>
+    {% endif %}
+  </section>
+
+  <!-- ------------------------------------------------ which one wins ----->
+  <section class="card">
+    <h2>Alert đang xem sẽ ra template nào</h2>
+    <p class="muted small">
+      Dựa trên chính alert đang preview. Đây là chỗ trả lời câu
+      "vì sao rule của tôi không ăn".
+    </p>
+    <p>
+      → <b>{{ explain.effective.name if explain.effective else 'built-in (file trong image)' }}</b>
+      {% if explain.winner %}<span class="muted">vì rule khớp</span>
+      {% elif explain.default %}<span class="muted">vì không rule nào khớp</span>
+      {% else %}<span class="muted">vì chưa có template mặc định</span>{% endif %}
+    </p>
+
+    <details>
+      <summary class="link">Khoá khớp được của alert này ({{ explain.context|length }})</summary>
+      <table class="kv" style="margin-top:8px">
+        {% for k, v in explain.context.items() %}
+        <tr><th class="mono">{{ k }}</th><td class="mono">{{ v }}</td></tr>
+        {% endfor %}
+      </table>
+      <p class="hint">
+        Điều kiện đặt trên khoá không có trong danh sách này thì <b>không bao
+        giờ</b> khớp — đó là lỗi rule hay gặp nhất.
+      </p>
+    </details>
+
+    <details style="margin-top:8px">
+      <summary class="link">Khoá do OpsTrail suy ra</summary>
+      <table class="kv" style="margin-top:8px">
+        {% for name, desc in derived_keys %}
+        <tr><th class="mono">{{ name }}</th><td>{{ desc }}</td></tr>
+        {% endfor %}
+      </table>
+      <p class="hint">
+        Còn lại là label nguyên văn từ Alertmanager. Khi label và khoá suy ra
+        trùng tên thì <b>label thắng</b> — OpsTrail không sửa dữ liệu nguồn.
+      </p>
+    </details>
+  </section>
+</div>
+
+<!-- -------------------------------------------------- rules --------------->
+<section class="card">
+  <h2>Rule chọn template — xét theo thứ tự ưu tiên</h2>
+  <table class="grid">
+    <thead><tr>
+      <th>Ưu tiên</th><th>Điều kiện</th><th>Dùng template</th>
+      <th>Mô tả</th><th>Trạng thái</th><th>Alert đang xem</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rules %}
+      <tr>
+        <td class="mono">{{ r.priority }}</td>
+        <td>{% for k, v in r.match.items() %}<code>{{ k }}={{ v }}</code> {% endfor %}</td>
+        <td>{{ r.template.name }}</td>
+        <td class="muted">{{ r.description or '' }}</td>
+        <td>
+          {% if r.enabled %}<span class="pill sent">bật</span>
+          {% else %}<span class="tag none">tắt</span>{% endif %}
+        </td>
+        <td>
+          {% set ev = (explain.rules | selectattr('rule.id', 'equalto', r.id) | list | first) %}
+          {% if ev and ev.matched %}<span class="pill firing">khớp</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>
+          {% if can_edit %}
+          <form method="post" action="/settings/template/rules/toggle" style="display:inline">
+            <input type="hidden" name="id" value="{{ r.id }}">
+            <button class="secondary small" type="submit">{{ 'Tắt' if r.enabled else 'Bật' }}</button>
+          </form>
+          <form method="post" action="/settings/template/rules/delete" style="display:inline">
+            <input type="hidden" name="id" value="{{ r.id }}">
+            <button class="danger small" type="submit"
+                    onclick="return confirm('Xoá rule này?')">Xoá</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">
+        Chưa có rule nào — mọi alert dùng template mặc định.
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if can_edit and templates %}
+  <form method="post" action="/settings/template/rules" style="margin-top:16px">
+    <h3>Rule mới</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <label>Ưu tiên (số nhỏ thắng)<br><input type="number" name="priority" value="100" style="width:120px"></label>
+      <label>Dùng template<br>
+        <select name="template_id">
+          {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label style="flex:1;min-width:220px">Mô tả<br><input name="description" placeholder="vì sao có rule này" style="width:100%"></label>
+    </div>
+    <p class="muted small" style="margin:12px 0 4px">
+      <b>Điều kiện — phải khớp tất cả.</b> Giá trị nhận wildcard:
+      <code>pg-prod-*</code>, <code>?</code> khớp một ký tự. Không phân biệt hoa thường.
+    </p>
+    <div id="conds">
+      <div class="cond" style="display:flex;gap:8px;margin-bottom:6px">
+        <input name="match_key" placeholder="khoá, ví dụ severity" list="ctxkeys" style="flex:1">
+        <input name="match_value" placeholder="giá trị, ví dụ critical" style="flex:1">
+        <button type="button" class="secondary" onclick="this.parentNode.remove()">×</button>
+      </div>
+    </div>
+    <datalist id="ctxkeys">
+      {% for k in explain.context.keys() %}<option value="{{ k }}">{% endfor %}
+    </datalist>
+    <button type="button" class="secondary" id="addCond">+ Thêm điều kiện</button>
+    <button type="submit">Tạo rule</button>
+  </form>
+  {% endif %}
+</section>
+
+<!-- -------------------------------------------------- editor -------------->
+<div class="tplgrid">
+  <section class="card">
+    <h2>Nội dung {{ selected.name if selected else 'built-in' }}</h2>
+    <form method="post" action="/settings/template/save">
+      <input type="hidden" name="id" value="{{ selected.id if selected else '' }}">
+      <textarea name="body" id="body" rows="26" spellcheck="false"
+                style="width:100%;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace"
+                {{ 'readonly' if not can_edit }}
+                hx-post="/settings/template/preview"
+                hx-trigger="keyup changed delay:600ms"
+                hx-target="#tplPreview" hx-swap="outerHTML"
+                hx-include="closest form" hx-indicator="#tplPreview">{{ source }}</textarea>
+      <input type="hidden" name="sample" value="{{ 'true' if use_sample else 'false' }}">
+      {% if can_edit and selected %}
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+        <button type="submit">Lưu</button>
+        <span class="muted small">Preview tự cập nhật khi gõ. Lưu sẽ render thử lại; JSON sai thì không lưu.</span>
+      </div>
+      {% elif not can_edit %}
+      <p class="hint">Vai trò của bạn là chỉ đọc. Sửa template cần <em>editor</em>.</p>
+      {% endif %}
+    </form>
+
+    {% if can_edit and selected %}
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <form method="post" action="/settings/template/reset">
+        <input type="hidden" name="id" value="{{ selected.id }}">
+        <button type="submit" class="secondary"
+                onclick="return confirm('Thay nội dung bằng template built-in?')">Về built-in</button>
+      </form>
+      <form method="post" action="/settings/template/delete">
+        <input type="hidden" name="id" value="{{ selected.id }}">
+        <button type="submit" class="danger"
+                onclick="return confirm('Xoá template này? Rule nào trỏ vào nó cũng bị xoá theo.')">Xoá template</button>
+      </form>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Card sẽ trông thế nào</h2>
+    {% include "ui/_template_preview.html" %}
+  </section>
+</div>
 
 <section class="card">
   <h2>Biến dùng được</h2>
   <table class="grid">
-    <tr><td class="mono">alert</td><td>Toàn bộ bản ghi: <code>alertname</code>, <code>severity</code>, <code>summary</code>, <code>description</code>, <code>labels</code>, <code>annotations</code>, <code>starts_at</code>, <code>ends_at</code>…</td></tr>
-    <tr><td class="mono">service · team</td><td>Tên hiển thị, rỗng nếu alert chưa gán nhãn</td></tr>
-    <tr><td class="mono">severity · status</td><td>Đã chuẩn hoá: CRITICAL / ERROR / WARNING / INFO · FIRING / RESOLVED</td></tr>
-    <tr><td class="mono">icon · status_icon</td><td>Emoji tương ứng</td></tr>
-    <tr><td class="mono">facts</td><td>Danh sách <code>(tiêu đề, giá trị)</code> đã lọc bỏ trường rỗng</td></tr>
-    <tr><td class="mono">owners</td><td>Tên người phụ trách (luôn có nếu đã gán, kể cả khi không mention)</td></tr>
-    <tr><td class="mono">mention_entities</td><td>Khối <code>msteams.entities</code>. <b>Rỗng</b> nếu chưa đạt ngưỡng severity hoặc chưa có owner</td></tr>
-    <tr><td class="mono">mention_text</td><td>Chuỗi <code>&lt;at&gt;Tên&lt;/at&gt;</code> khớp với entities. Rỗng khi không mention</td></tr>
-    <tr><td class="mono">generator_url</td><td>Link đồ thị Prometheus</td></tr>
-    <tr><td class="mono">detail_url</td><td>Link trang chi tiết trong OpsTrail</td></tr>
-    <tr><td class="mono">runbook_url · dashboard_url</td><td>Lấy từ annotation <code>runbook_url</code> / <code>dashboard_url</code></td></tr>
-    <tr><td class="mono">silence_url</td><td>Link tạo silence trong Alertmanager, dựng từ <code>external_url</code></td></tr>
+    {% for name, desc in context_vars %}
+    <tr><td class="mono">{{ name }}</td><td>{{ desc }}</td></tr>
+    {% endfor %}
   </table>
   <p class="hint">
-    Mention chỉ hiển thị được trong <code>TextBlock</code> và <code>FactSet</code> —
-    đặt <code>mention_text</code> vào chỗ khác thì Teams hiện ra chữ
-    <code>&lt;at&gt;…&lt;/at&gt;</code> thô.
+    Cú pháp Jinja2, xuất thẳng JSON Adaptive Card. Mọi giá trị phải đi qua
+    <code>| tojson</code> — một dấu nháy trong annotation là hỏng cả document.
+    Mention chỉ hiển thị được trong <code>TextBlock</code> và <code>FactSet</code>.
   </p>
 </section>
+{% endblock %}
 
-<form method="post" action="/settings/template/save">
-  <section class="card">
-    <h2>Nội dung template</h2>
-    <textarea name="body" id="body" rows="22" spellcheck="false"
-              style="width:100%;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace"
-              {{ 'readonly' if not can_edit }}>{{ source }}</textarea>
-    {% if can_edit %}
-    <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
-      <button type="submit" formaction="/settings/template/preview" class="secondary">Xem trước</button>
-      <button type="submit">Lưu</button>
-      {% if using_custom %}
-      <button type="submit" formaction="/settings/template/reset" class="danger"
-              formnovalidate
-              onclick="return confirm('Xoá template tuỳ chỉnh và quay về mặc định?')">
-        Về mặc định
-      </button>
-      {% endif %}
-      <span class="muted small">Lưu sẽ render thử trước; JSON sai thì không lưu.</span>
-    </div>
-    {% else %}
-    <p class="hint">Vai trò của bạn là chỉ đọc. Sửa template cần <em>editor</em>.</p>
-    {% endif %}
-  </section>
-</form>
-
-<section class="card">
-  <h2>Kết quả render</h2>
-  {% if preview_error %}
-    <p class="error">{{ preview_error }}</p>
-  {% else %}
-    <p class="note">
-      Đang render với <b>{{ 'alert mẫu đầy đủ' if use_sample else 'alert thật gần nhất' }}</b>.
-      {% if use_sample %}
-        <a href="/settings/template">← Dùng alert thật</a>
-      {% else %}
-        <a href="/settings/template?sample=1">Dùng alert mẫu đầy đủ →</a>
-      {% endif %}
-    </p>
-    {% if not has_value and not use_sample %}
-    <p class="note" style="color:var(--warn)">
-      Alert gần nhất của bạn <b>không có</b> annotation <code>value</code> /
-      <code>threshold</code>, nên card không có dòng số đo. Prometheus không tự
-      gửi giá trị metric. Thêm vào alerting rule:
-      <code>value: '{{ '{{ printf "%.1f" $value }}' }}%'</code> và
-      <code>threshold: "85%"</code> — chi tiết ở <code>docs/alertmanager.md</code>.
-      Bấm "Dùng alert mẫu đầy đủ" để xem card khi đã có.
-    </p>
-    {% endif %}
-    <p class="note">
-      Copy JSON dưới đây dán vào
-      <a href="https://adaptivecards.io/designer" target="_blank" rel="noopener noreferrer">Adaptive Cards Designer</a>
-      để xem hình thật trước khi gửi lên Teams.
-    </p>
-    <pre style="max-height:420px;overflow:auto"><code>{{ preview }}</code></pre>
-  {% endif %}
-</section>
+{% block scripts %}
+<script src="/static/cardpreview.js?v={{ asset_v }}" defer></script>
+<script>
+  // Condition rows, same builder as the label rules page.
+  document.getElementById('addCond')?.addEventListener('click', function () {
+    var row = document.querySelector('#conds .cond').cloneNode(true);
+    row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+    row.querySelector('button').onclick = function () { row.remove(); };
+    document.getElementById('conds').appendChild(row);
+  });
+</script>
 {% endblock %}

@@ -10,6 +10,7 @@ from app.models.core import (
     ServiceOwner,
     Team,
     TeamOwner,
+    TemplateRule,
     User,
 )
 from app.models.enums import (
@@ -31,6 +32,7 @@ __all__ = [
     "LabelRule",
     "LabelSource",
     "MessageTemplate",
+    "TemplateRule",
     "Notification",
     "NotificationChannel",
     "NotificationStatus",

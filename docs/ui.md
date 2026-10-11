@@ -19,8 +19,11 @@ Thu gọn rồi chỉ còn dải biểu tượng, phần nội dung rộng thêm
 | `/alerts` | Danh sách, filter, sắp xếp, phân trang |
 | `/alerts/{id}` | Chi tiết + lịch sử delivery + gán nhãn tay |
 | `/unlabelled` | Backlog alert chưa ai gán nhãn, có nút `+ rule` |
+| `/deliveries` | Mọi lần gửi: lọc theo channel, kết quả, service, team, thời gian |
+| `/deliveries/{id}` | Một lần gửi: mã HTTP, số lần thử, lỗi đầy đủ, alert liên quan |
 | `/dashboard` | 8 biểu đồ, lọc theo service/team/thời gian |
 | `/labels/services` · `/labels/teams` · `/labels/rules` | Quản lý nhãn |
+| `/settings/retention` | Hai cửa sổ retention, số sẽ xoá, nút chạy ngay |
 | `/users` | Quản lý user — chỉ admin |
 | `/docs` | Swagger của API |
 
@@ -67,6 +70,40 @@ Nút ☀ / 🌙 / 🖥 trong dropdown tài khoản góc phải. Lần đầu the
 Biểu đồ **vẽ lại** khi đổi theme. Canvas không phải CSS: thứ đã vẽ giữ nguyên
 màu lúc tạo, nên nếu không vẽ lại thì bấm "Light" xong chữ trên biểu đồ gần như
 vô hình.
+
+## Lịch sử gửi
+
+Biểu đồ *Delivery outcome* trên dashboard nói **bao nhiêu** lần gửi hỏng.
+`/deliveries` nói **lần nào**, và đầu bên kia trả lời gì.
+
+![Trang Deliveries](images/deliveries.png)
+
+Khoảng thời gian ở đây tính theo lúc **thử gửi**, không phải lúc alert bắt
+đầu — khác có chủ ý với biểu đồ trên dashboard. Một lần thử lại hôm nay của
+alert hai ngày trước vẫn thuộc "Last 1d", vì trang này nói về việc gửi.
+
+Bấm vào dòng để mở chi tiết. Chi tiết là **trang riêng** chứ không phải dòng
+xổ ra: `last_error` giữ tới 2000 ký tự, và khi template tuỳ chỉnh hỏng thì cả
+output render nằm trong đó — thứ hữu ích nhất trên trang và không thể đọc
+trong một ô bảng.
+
+![Chi tiết một lần gửi](images/delivery-detail.png)
+
+### URL webhook là bí mật
+
+Cột *Target* luôn hiện dạng rút gọn. URL Power Automate đầy đủ **chính là**
+thông tin xác thực — ai có nó là gửi được vào channel. Chỉ `admin` xem được
+đầy đủ, và lần xem đó ghi vào audit log.
+
+## Retention
+
+![Trang Retention](images/retention.png)
+
+Hai cửa sổ chạy mỗi ngày một lần, và trang này cho **chạy ngay** để khỏi phải
+đợi tới 03:00 rồi đi đọc log. Số "sẽ xoá ở lần chạy tới" tính bằng đúng điều
+kiện mà job dùng, nên nó là con số thật chứ không phải ước lượng.
+
+Dòng **đang chờ gửi lại** không bao giờ bị xoá, dù cũ đến đâu.
 
 ## Dashboard
 

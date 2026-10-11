@@ -124,6 +124,7 @@ cp .env.local.example .env.local
 | [Tích hợp Alertmanager](docs/alertmanager.md) | Định tuyến, group_by, xác thực, lỗi thường gặp |
 | [Gán nhãn service/team](docs/labelling.md) | 3 bước gán nhãn, label rule, wildcard, backfill |
 | [Metadata & owner](docs/metadata.md) | Khai báo team/service/owner, @mention trong Teams, quy trình test |
+| [Lịch sử gửi & retention](docs/ui.md#lịch-sử-gửi) | Trang Deliveries, chi tiết một lần gửi, hai cửa sổ retention |
 | [Xác thực Power Automate](docs/msteams-auth.md) | Entra ID OAuth hoặc header tĩnh, demo tại chỗ, xoay vòng bí mật |
 | [Template card Teams](docs/teams-template.md) | Sửa template trên UI, biến dùng được, hai lớp bảo vệ |
 | [Giao diện quản trị](docs/ui.md) | Điều hướng, bảng dữ liệu, sắp xếp, theme |

@@ -1,14 +1,80 @@
 # Template card MS Teams
 
 Sửa tại **Settings → Template Teams**. Lưu vào database nên **không cần deploy
-lại**. Không có template tuỳ chỉnh thì dùng bản mặc định trong image.
+lại**. Chưa tạo template nào thì dùng bản mặc định trong image.
+
+## Nhiều template, chọn theo rule
+
+Một card chung cho cả sự cố sàn giao dịch lẫn ổ đĩa sắp đầy ở staging là
+không đúng. OpsTrail cho tạo nhiều template và chọn bằng **rule**:
+
+| | |
+|---|---|
+| **Template mặc định** | Dùng khi không rule nào khớp. Đúng một cái mỗi channel, ép ở DB |
+| **Rule** | Điều kiện + độ ưu tiên. **Số nhỏ thắng**. Rỗng thì không khớp gì |
+
+Rule viết giống hệt [label rule](labelling.md): `{khoá: giá trị}`, mọi điều
+kiện phải khớp, giá trị nhận wildcard `pg-prod-*`, không phân biệt hoa thường.
+
+![Trang template và rule](images/template-editor.png)
+
+### Khoá khớp được
+
+Toàn bộ **label nguyên văn** mà Alertmanager gửi — `severity`, `alertname`,
+`instance`, `environment`, … — cộng vài khoá OpsTrail tự suy ra:
+
+| Khoá | Ở đâu ra |
+|---|---|
+| `status` | `firing` / `resolved`. Không bao giờ là label — Alertmanager gửi riêng |
+| `tier` | Tier của service, khai ở **Labels → Services**. Chưa khai thì **không có khoá này**, nên rule có điều kiện `tier` đơn giản không khớp — không đoán, không bịa |
+| `resolved_service`, `resolved_team` | Key sau khi gán nhãn. Khác `service` khi nhãn đến từ rule chứ không từ label |
+| `service`, `team` | Chỉ điền khi alert **không** tự mang label cùng tên |
+
+> **Label của Alertmanager luôn thắng khoá suy ra.** Alert gửi
+> `service=payments-api-v2` trong khi OpsTrail gán nhãn thành `payments-api`
+> thì `service` giữ nguyên giá trị Alertmanager gửi; muốn khớp theo kết quả
+> gán nhãn thì dùng `resolved_service`. OpsTrail không sửa dữ liệu nguồn.
+
+Trang có sẵn hộp **"Alert đang xem sẽ ra template nào"**: liệt kê đúng những
+khoá alert đó có, rule nào khớp, template nào thắng. Điều kiện đặt trên khoá
+không nằm trong danh sách đó thì **không bao giờ** khớp — đây là lỗi rule hay
+gặp nhất.
+
+### Ví dụ
+
+```
+ưu tiên 1    severity=critical, tier=1     → tier1-critical
+ưu tiên 10   environment=staging           → quiet
+ưu tiên 100  (không có rule)               → template mặc định
+```
+
+## Xem trước card
+
+Trang dựng **hình card thật** ngay khi gõ, không phải reload. JSON sai thì
+hiện lỗi chứ không giữ lại hình cũ để đánh lừa.
+
+> Đây là bản dựng **xấp xỉ**, không phải ảnh chụp Teams. Khác cụ thể ở:
+> mention `<at>Tên</at>` hiện ra chữ thô trong khi Teams phân giải thành
+> người thật; Teams dùng font, bề rộng, theme riêng; nút bấm ở đây trơ.
+> Cần đối chiếu từng pixel thì dán JSON vào
+> [Adaptive Cards Designer](https://adaptivecards.io/designer).
+
+Chuyển giữa **alert thật gần nhất** và **alert mẫu đầy đủ** bằng link ngay
+trên khung preview — alert thật cho thấy hình dạng dữ liệu của chính bạn,
+alert mẫu cho thấy card khi mọi trường đều có.
 
 ## Alert không bao giờ bị chặn vì template
 
-Hai lớp bảo vệ, cả hai đều có test:
+Ba lớp bảo vệ, đều có test:
 
-**Lớp 1 — lúc lưu.** Template được render thử với alert thật gần nhất rồi
-`json.loads`. JSON sai thì **không lưu được**, hiện luôn đoạn văn bản sai.
+**Lớp 0 — lúc chọn.** Rule hỏng, template bị xoá, truy vấn lỗi: tất cả rơi về
+template mặc định, rồi về built-in. Một quyết định định tuyến **không bao giờ**
+là lý do card không đi.
+
+**Lớp 1 — lúc lưu.** Template được render thử với **cả hai**: alert thật gần
+nhất và alert mẫu đầy đủ. JSON sai thì **không lưu được**. Kiểm theo từng
+template, vì rule làm một template trở nên với tới được bởi những alert mà
+người viết nó chưa từng xem.
 
 **Lớp 2 — lúc gửi.** Template hợp lệ với alert mẫu vẫn có thể hỏng với một
 alert cụ thể (ví dụ alert không có service mà template lại gọi
@@ -26,11 +92,6 @@ GROUP BY 2;
 
 Thiếu lớp 2 thì một template gõ sai sẽ chặn **toàn bộ** alert ra Teams mà
 không ai hay — đúng lúc cần nhất.
-
-Sửa tại **Settings → Template Teams**. Trang liệt kê sẵn mọi biến dùng được
-và có nút xem thử trước khi lưu:
-
-![Trình sửa template](images/template-editor.png)
 
 ## Cú pháp
 

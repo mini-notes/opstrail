@@ -36,7 +36,10 @@ SHOTS = [
     ("alerts-list",          ALERTS,               1000, "light", False, None),
     ("alerts-sort-severity", BY_SEVERITY,           820, "light", False, None),
     ("alerts-pager",         ALERTS,               1000, "light", False, ".pager"),
-    ("alert-detail",         "/alerts/761",        1050, "light", False, None),
+    ("alert-detail",         "/alerts/816",        1050, "light", False, None),
+    ("deliveries",           "/deliveries?size=25",1000, "light", False, None),
+    ("delivery-detail",      "/deliveries/663",       950, "light", False, None),
+    ("retention",            "/settings/retention", 900, "light", False, None),
     ("unlabelled",           "/unlabelled",         900, "light", False, None),
     ("dashboard-light",      "/dashboard",         2400, "light", False, None),
     ("dashboard-dark",       "/dashboard",         1150, "dark",  False, None),
@@ -45,7 +48,7 @@ SHOTS = [
     ("teams",                "/labels/teams",       800, "light", False, None),
     ("owners",               "/labels/owners",      800, "light", False, None),
     ("users",                "/users",              800, "light", False, None),
-    ("template-editor",      "/settings/template", 1100, "light", False, None),
+    ("template-editor",      "/settings/template", 2000, "light", False, None),
     ("sidebar-collapsed",    ALERTS,                800, "light", True,  None),
 ]
 

@@ -291,3 +291,16 @@ def test_no_custom_template_means_builtin_with_no_reason():
     card, reason = render.render_card_safe(ctx(make_alert()), None)
     assert reason is None
     assert card["$schema"].startswith("http://adaptivecards.io/")
+
+
+def test_every_context_variable_is_documented():
+    """The editor's variable table is generated from CONTEXT_VARS. Adding a
+    key to build_context() without describing it there would leave operators
+    guessing -- which is exactly how the old hand-written table lost
+    value_line and duration_line."""
+    documented = {name for name, _ in render.CONTEXT_VARS}
+    produced = set(ctx(make_alert()).keys())
+    assert documented == produced, {
+        "undocumented": produced - documented,
+        "described but not produced": documented - produced,
+    }

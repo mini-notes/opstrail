@@ -74,6 +74,11 @@ base64 để mật khẩu dài hơn 72 byte không bị cắt âm thầm.
 
 ## Retention
 
+Quản lý tại **Settings → Retention**: xem hai cửa sổ, số bản ghi sẽ bị xoá ở
+lần chạy tới, và nút **Chạy ngay** (chỉ `admin`, có ghi audit log). Xem thêm
+[ui.md](ui.md#retention).
+
+
 Chạy 03:00 UTC hằng ngày, xoá theo batch 5000 để không giữ lock lâu.
 `notifications` xoá theo cascade. Mặc định giữ **6 tháng**
 (`ALERT_RETENTION_MONTHS`, đặt `0` để tắt).
