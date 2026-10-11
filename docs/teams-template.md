@@ -27,6 +27,11 @@ GROUP BY 2;
 Thiếu lớp 2 thì một template gõ sai sẽ chặn **toàn bộ** alert ra Teams mà
 không ai hay — đúng lúc cần nhất.
 
+Sửa tại **Settings → Template Teams**. Trang liệt kê sẵn mọi biến dùng được
+và có nút xem thử trước khi lưu:
+
+![Trình sửa template](images/template-editor.png)
+
 ## Cú pháp
 
 Jinja2, xuất thẳng JSON Adaptive Card.

@@ -23,6 +23,8 @@ Thứ tự nên làm: **Teams → Services → Owners → gán owner**.
 
 **Labels → Teams → Thêm team**
 
+![Trang Teams](images/teams.png)
+
 | Trường | |
 |---|---|
 | `key` | Đem so với label `team` / `squad` / `owner` của alert |
@@ -32,6 +34,8 @@ Thứ tự nên làm: **Teams → Services → Owners → gán owner**.
 ### Services
 
 **Labels → Services → Thêm service**
+
+![Trang Services](images/services.png)
 
 | Trường | |
 |---|---|
@@ -46,6 +50,8 @@ Thứ tự nên làm: **Teams → Services → Owners → gán owner**.
 ### Owners
 
 **Labels → Owners → Thêm owner**
+
+![Trang Owners](images/owners.png)
 
 Owner **không cần tài khoản OpsTrail**. Đây là danh bạ riêng.
 

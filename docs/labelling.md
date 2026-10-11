@@ -3,7 +3,10 @@
 Cách OpsTrail quyết định một alert thuộc về service và team nào, và cách điều
 khiển việc đó **không cần sửa alerting rule ở Prometheus**.
 
-Quản lý toàn bộ trên UI tại **Labels → Services / Teams / Rules**.
+Quản lý toàn bộ trên UI tại **Labels → Services / Teams / Rules**. Chính trang
+Rules cũng nhắc lại ba bước này ngay đầu trang:
+
+![Trang Label rules](images/label-rules.png)
 
 ## Ba bước, chạy cho mọi alert vào
 
@@ -96,11 +99,15 @@ Chỉ chạm alert có `label_source IS NULL`. **Nhãn gán tay không bị đ�
 
 ## Tạo rule từ alert chưa gán nhãn
 
+![Trang Unlabelled](images/unlabelled.png)
+
 Trên `/unlabelled`, mỗi dòng có nút **+ rule** mở form đã điền sẵn label của
 alert đó (`severity` bị loại vì không phải chiều gán nhãn). Đây là luồng nhanh
 nhất: thấy alert lạ thì tạo rule ngay tại chỗ.
 
 ## Gán nhãn tay
+
+![Khối gán nhãn tay trên trang chi tiết](images/alert-detail.png)
 
 Trên trang chi tiết alert. Ghi `label_source='manual'`, và
 `app/services/ingest.py` bảo vệ nó trong mệnh đề `ON CONFLICT`: Alertmanager

@@ -5,6 +5,8 @@ Nhận alert từ **Alertmanager**, gán nhãn service/team, lưu lịch sử v�
 
 Không AI, không on-call. Phase 1.
 
+![Dashboard OpsTrail](docs/images/dashboard-dark.png)
+
 ---
 
 ## 1. Chạy
@@ -15,9 +17,11 @@ docker compose up -d
 curl localhost:8000/healthz
 ```
 
-Stack gồm 4 container: `postgres`, `opstrail`, **`alertmanager` thật**, và
+Stack gồm 5 container: `postgres`, `opstrail`, **`alertmanager` thật**,
 `teams-mock` (đóng vai Power Automate khi bạn chưa có flow — xem card nó nhận
-bằng `docker compose logs -f teams-mock`). Migration tự chạy lúc khởi động.
+bằng `docker compose logs -f teams-mock`) và `mock-entra` (endpoint token giả,
+chỉ dùng khi demo [xác thực](docs/msteams-auth.md)). Migration tự chạy lúc
+khởi động.
 
 ### ⚠️ Hai file env, đừng nhầm
 

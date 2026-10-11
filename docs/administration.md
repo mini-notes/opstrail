@@ -23,6 +23,8 @@ Sau đó quản lý user trên UI tại **Admin → Users** (chỉ `admin` vào 
 
 ## Phân quyền
 
+![Trang Users](images/users.png)
+
 | Vai trò | Được làm |
 |---|---|
 | `viewer` | Chỉ đọc mọi trang |
