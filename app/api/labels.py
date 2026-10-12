@@ -10,7 +10,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Form, Query, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.pagination import ADMIN_PAGE_SIZE, paginate, resolve_size
@@ -248,6 +248,31 @@ async def set_team_threshold(
     return RedirectResponse("/labels/teams", status_code=status.HTTP_303_SEE_OTHER)
 
 
+async def _rescue_orphans(session: AsyncSession) -> int:
+    """Send alerts that lost their attribution back to the unlabelled backlog.
+
+    `alerts.service_id` and `alerts.team_id` are ON DELETE SET NULL, but
+    nothing clears `label_source`. Deleting a service therefore leaves rows
+    reading `label_source='manual'` while pointing at nothing -- and both the
+    Unlabelled page and the backfill select on `label_source IS NULL`, so
+    those rows become invisible to the two things that exist to find them.
+    They would sit there for ever.
+
+    Run after the delete has been flushed, so the FK has already nulled the
+    columns. Returns how many were rescued, for the audit entry.
+    """
+    result = await session.execute(
+        update(Alert)
+        .where(
+            Alert.label_source.is_not(None),
+            Alert.service_id.is_(None),
+            Alert.team_id.is_(None),
+        )
+        .values(label_source=None)
+    )
+    return result.rowcount or 0
+
+
 @router.post("/services/{service_id}/delete")
 async def delete_service(
     service_id: int,
@@ -267,6 +292,14 @@ async def delete_service(
             object_type="service", object_id=service_id, detail={"key": svc.key},
         )
         await session.delete(svc)
+        await session.flush()
+        rescued = await _rescue_orphans(session)
+        if rescued:
+            await audit.record(
+                session, user, "alert.label.orphaned",
+                object_type="service", object_id=service_id,
+                detail={"returned_to_backlog": rescued},
+            )
         await session.commit()
     return RedirectResponse("/labels/services", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -372,6 +405,14 @@ async def delete_team(
             object_type="team", object_id=team_id, detail={"key": team.key},
         )
         await session.delete(team)
+        await session.flush()
+        rescued = await _rescue_orphans(session)
+        if rescued:
+            await audit.record(
+                session, user, "alert.label.orphaned",
+                object_type="team", object_id=team_id,
+                detail={"returned_to_backlog": rescued},
+            )
         await session.commit()
     return RedirectResponse("/labels/teams", status_code=status.HTTP_303_SEE_OTHER)
 

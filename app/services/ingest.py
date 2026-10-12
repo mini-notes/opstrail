@@ -14,13 +14,13 @@ Contract with Alertmanager
 import logging
 from dataclasses import dataclass
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Alert, AlertStatus, LabelSource
 from app.schemas.alertmanager import AlertmanagerPayload
-from app.services import labeling
+from app.services import audit, labeling
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +40,49 @@ class IngestResult:
     notify_ids: list[int]
 
 
+async def _record_attribution_change(
+    session: AsyncSession, previous, alert_id: int, attribution
+) -> None:
+    """Write an audit row when intake moves an alert's label by itself.
+
+    Two cases, both of which look like a bug to whoever notices them later:
+
+    * a manual tag handed back to the payload, now that the payload resolves;
+    * an alert losing its label because the rule that claimed it was deleted
+      or disabled, which drops the attributed count with nothing to explain it.
+
+    Never raises: an audit row is a nice-to-have and intake is the path that
+    must not fail.
+    """
+    if previous is None:
+        return
+    before, after = previous.label_source, attribution.source
+    if before == after and previous.service_id == attribution.service_id:
+        return
+
+    action = None
+    if before is LabelSource.manual and after is LabelSource.payload:
+        action = "alert.label.superseded"
+    elif before is LabelSource.rule and after is None:
+        action = "alert.label.lost"
+    if action is None:
+        return
+
+    try:
+        await audit.record(
+            session, None, action,
+            object_type="alert", object_id=alert_id,
+            detail={
+                "from": before.value if before else None,
+                "to": after.value if after else None,
+                "service_id_from": previous.service_id,
+                "service_id_to": attribution.service_id,
+            },
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("could not record attribution change for alert %s", alert_id)
+
+
 async def ingest_payload(
     session: AsyncSession, payload: AlertmanagerPayload
 ) -> IngestResult:
@@ -52,16 +95,26 @@ async def ingest_payload(
         annotations = payload.effective_annotations(am_alert)
         attribution = await labeling.resolve(session, labels)
 
-        # Read the prior state before upserting so we can tell a genuine
-        # state change from a plain repeat notification.
-        previous_status = (
+        # Read the prior state before upserting. The status tells a genuine
+        # state change from a plain repeat; the attribution is needed to
+        # notice when intake is about to hand a manual tag back to the
+        # payload. One query serves both -- the second value would otherwise
+        # cost a round trip per alert on the intake hot path.
+        previous = (
             await session.execute(
-                select(Alert.status).where(
+                select(
+                    Alert.id,
+                    Alert.status,
+                    Alert.label_source,
+                    Alert.service_id,
+                    Alert.team_id,
+                ).where(
                     Alert.fingerprint == am_alert.fingerprint,
                     Alert.starts_at == am_alert.startsAt,
                 )
             )
-        ).scalar_one_or_none()
+        ).one_or_none()
+        previous_status = previous.status if previous else None
 
         stmt = pg_insert(Alert).values(
             fingerprint=am_alert.fingerprint,
@@ -83,10 +136,23 @@ async def ingest_payload(
             label_source=attribution.source,
         )
 
-        # A manual tag is an operator decision and must survive the next
-        # repeat notification; anything auto-resolved is refreshed, so adding
-        # a label_rule retro-labels alerts still being re-sent.
-        keep_manual = Alert.label_source == LabelSource.manual
+        # A manual tag is a patch applied while the source could not say who
+        # owns this alert. Once the alert's OWN labels resolve to a service,
+        # the source takes over: Alertmanager is the system of record, and a
+        # hand-tag that outlives the thing it was standing in for turns into
+        # a quiet lie about attribution.
+        #
+        # A `rule` match does NOT take over. A rule is OpsTrail guessing too,
+        # and a guess must never overwrite a person's decision.
+        #
+        # `is_distinct_from` rather than `!=`: when nothing resolved,
+        # excluded.label_source is NULL and `NULL != 'payload'` is NULL, not
+        # TRUE -- using `!=` would silently drop the manual tag every time an
+        # alert stopped matching anything.
+        keep_manual = and_(
+            Alert.label_source == LabelSource.manual,
+            stmt.excluded.label_source.is_distinct_from(LabelSource.payload),
+        )
 
         stmt = stmt.on_conflict_do_update(
             constraint="uq_alert_fingerprint_start",
@@ -112,6 +178,8 @@ async def ingest_payload(
 
         alert_id = (await session.execute(stmt)).scalar_one()
         alert_ids.append(alert_id)
+
+        await _record_attribution_change(session, previous, alert_id, attribution)
 
         new_status = AlertStatus(am_alert.status)
         if previous_status is None or previous_status != new_status:

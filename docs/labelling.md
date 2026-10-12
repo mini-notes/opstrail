@@ -34,6 +34,10 @@ Rẻ nhất và chính xác nhất:
 
 `job` để cuối vì nó thường là scrape target chứ không phải service.
 
+> **So khớp không phân biệt hoa thường.** `service=Payments-API` khớp service
+> key `payments-api`. Trước đây chỗ này so khớp chính xác và hỏng im lặng —
+> alert rơi thẳng xuống backlog mà không có gì nói vì sao.
+
 ### 2. `rule` — label rule bạn tạo
 
 Cho rule cũ chưa sửa được. Khớp trên **bất kỳ label key nào** có trong alert:
@@ -109,15 +113,66 @@ nhất: thấy alert lạ thì tạo rule ngay tại chỗ.
 
 ![Khối gán nhãn tay trên trang chi tiết](images/alert-detail.png)
 
-Trên trang chi tiết alert. Ghi `label_source='manual'`, và
-`app/services/ingest.py` bảo vệ nó trong mệnh đề `ON CONFLICT`: Alertmanager
-gửi lại bao nhiêu lần cũng không ghi đè. Nhãn tự động (`payload`/`rule`) thì
-vẫn được làm mới, nên thêm một rule sẽ gán nhãn hồi tố cho alert đang được gửi
-lại.
+Trên trang chi tiết alert, ghi `label_source='manual'`.
+
+**Nhãn tay là bản vá tạm khi nguồn chưa nói được, không phải quyết định vĩnh
+viễn.** Thứ tự đầy đủ:
+
+```
+payload  >  manual  >  rule  >  chưa gán
+```
+
+| Tình huống | Kết quả |
+|---|---|
+| Label của alert tra ra Service/Team | **Nguồn thắng**, kể cả khi đang có nhãn tay |
+| Label không tra ra gì, có rule khớp | Nhãn tay thắng rule |
+| Label không tra ra gì, không rule nào khớp | Nhãn tay giữ nguyên |
+| Chưa ai gán tay | `payload` → `rule` → chưa gán, như trên |
+
+Lý do `payload` thắng `manual`: tình huống thật hay gặp nhất là alert **vẫn
+luôn** mang `service=billing-api`, nhưng chưa ai khai Service đó nên nó vào
+backlog và người trực gán tay một chỗ gần đúng. Khi Service được khai, nhãn
+tay trở thành thứ đang nói sai về quyền sở hữu — Alertmanager mới là sổ gốc.
+
+Lý do `rule` **không** thắng `manual`: rule cũng chỉ là phỏng đoán của
+OpsTrail, và một phỏng đoán không được đè lên quyết định của con người.
+
+Mỗi lần OpsTrail tự đổi nhãn như vậy đều ghi **audit log** với `user_id` rỗng
+— không ai thực hiện, nên nó càng cần được ghi lại: một attribution tự dịch
+chuyển mà không có người đứng sau thì không phân biệt được với lỗi.
+
+| Action | Khi nào |
+|---|---|
+| `alert.label.superseded` | Nguồn tiếp quản nhãn tay |
+| `alert.label.lost` | Rule bị xoá/tắt làm alert mất nhãn ở lần lặp kế |
+| `alert.label.orphaned` | Xoá service/team khiến alert quay về backlog |
+
+Nhãn tự động (`payload`/`rule`) được làm mới ở **mọi** lần lặp, nên thêm một
+rule sẽ gán nhãn hồi tố cho alert đang được gửi lại — và xoá một rule cũng sẽ
+gỡ nhãn của chúng.
+
+## Sửa label ở nguồn Alertmanager thì sao?
+
+Câu trả lời ít ai đoán đúng: **không sửa dòng cũ, mà sinh dòng mới.**
+
+OpsTrail lưu `fingerprint` nguyên văn từ Alertmanager, và fingerprint là hash
+của **toàn bộ tập label**. Thêm hay sửa `service=` trong alerting rule là đổi
+fingerprint → khoá `(fingerprint, starts_at)` không trùng → `INSERT` dòng mới.
+
+Hệ quả cần biết trước khi sửa rule Prometheus:
+
+- Alert cũ **giữ nhãn cũ vĩnh viễn**. Backfill cũng không đụng, vì nó chỉ quét
+  `label_source IS NULL`.
+- Thống kê lịch sử sẽ thấy cùng một alert nằm ở hai attribution, cắt đúng
+  ngày bạn sửa.
+- Chỉ alert **đang còn được gửi lại** mới được gán nhãn lại.
 
 ## Xoá service / team
 
 - `alerts.service_id` là `ON DELETE SET NULL` → alert sống sót nhưng **mất nhãn**
+  và được đưa **trở lại backlog** `/unlabelled` để còn gán lại được. Thiếu
+  bước đó thì chúng mang `label_source` cũ nhưng không trỏ vào đâu — vô hình
+  với cả trang Unlabelled lẫn backfill, và kẹt ở đó vĩnh viễn
 - `label_rules.service_id` là `ON DELETE CASCADE` → **rule trỏ vào nó bị xoá theo**
 
 Hộp xác nhận trên UI nói rõ cả hai con số trước khi hỏi.

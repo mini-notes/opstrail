@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Alert, LabelSource, Service, Team
+from app.models import Alert, Service, Team
 from app.services import labeling
 
 log = logging.getLogger(__name__)
@@ -158,9 +158,13 @@ async def apply(session: AsyncSession) -> int:
                 continue
             alert.service_id = attribution.service_id
             alert.team_id = attribution.team_id
-            # Always `rule`: `payload` attribution would have been applied at
-            # ingest, so anything still unlabelled was claimed by a rule.
-            alert.label_source = LabelSource.rule
+            # Whatever resolve() actually decided, not a hardcoded `rule`.
+            # Usually it IS a rule -- payload attribution would have been
+            # applied at ingest -- but not always: a service declared AFTER
+            # the alert arrived makes its label resolve for the first time
+            # here, and stamping that `rule` under-reports payload coverage
+            # on the dashboard for ever.
+            alert.label_source = attribution.source
             changed += 1
 
         await session.commit()

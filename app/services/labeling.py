@@ -12,7 +12,7 @@ Precedence, cheapest and most trustworthy first:
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import LabelRule, LabelSource, Service, Team
@@ -69,6 +69,27 @@ def _rule_matches(match: dict, labels: dict[str, str]) -> bool:
     )
 
 
+async def _by_key(session: AsyncSession, model, key: str):
+    """Look up a Service or Team by key, ignoring case.
+
+    Everything else in this module folds case -- the label keys in `_lookup`,
+    and both keys and values in `_rule_matches`. An exact, case-sensitive
+    comparison here was the one asymmetry, and it failed silently: an alert
+    labelled `service=Payments-API` simply fell through to the rules and then
+    to the unlabelled backlog, with nothing to say why.
+
+    Ordered so the answer is stable if two keys ever differ only by case.
+    """
+    return (
+        await session.execute(
+            select(model)
+            .where(func.lower(model.key) == key.lower())
+            .order_by(model.key)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 async def resolve(session: AsyncSession, labels: dict[str, str]) -> Attribution:
     """Attribute an alert to a service/team using the precedence above."""
     # --- 1. labels carried by the payload itself ---
@@ -77,16 +98,12 @@ async def resolve(session: AsyncSession, labels: dict[str, str]) -> Attribution:
 
     service_id = team_id = None
     if service_key:
-        service = (
-            await session.execute(select(Service).where(Service.key == service_key))
-        ).scalar_one_or_none()
+        service = await _by_key(session, Service, service_key)
         if service:
             service_id = service.id
             team_id = service.team_id
     if team_key:
-        team = (
-            await session.execute(select(Team).where(Team.key == team_key))
-        ).scalar_one_or_none()
+        team = await _by_key(session, Team, team_key)
         if team:
             team_id = team.id
 
