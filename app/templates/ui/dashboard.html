@@ -15,9 +15,8 @@
     <option value="">All teams</option>
     {% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if team_id == t.id }}>{{ t.key }}</option>{% endfor %}
   </select>
-  <select name="days" onchange="this.form.submit()">
-    {% for d in [7, 30, 90, 180] %}<option value="{{ d }}" {{ 'selected' if days == d }}>Last {{ d }} days</option>{% endfor %}
-  </select>
+  {% include "ui/_timerange.html" %}
+  <button type="submit">Áp dụng</button>
   <noscript><button type="submit">Apply</button></noscript>
   <a class="link" href="/dashboard">Reset</a>
 </form>
@@ -89,7 +88,18 @@ window.addEventListener('load', async () => {
   }
 
   const qs = new URLSearchParams(location.search);
-  qs.set('days', '{{ days }}');
+  // Hand the charts exactly what the page was asked for, absolute range
+  // included -- otherwise the tiles and the charts describe different windows.
+  const page = new URLSearchParams(location.search);
+  if (page.get('from') && page.get('to')) {
+    qs.set('from', page.get('from'));
+    qs.set('to', page.get('to'));
+    if (page.get('tz_offset')) qs.set('tz_offset', page.get('tz_offset'));
+  } else {
+    qs.set('days', '{{ days }}');
+    qs.set('tz_offset', String(window.opstrailTimezone
+      ? window.opstrailTimezone.offsetMinutes() : 0));
+  }
   let data;
   try {
     const res = await fetch('/api/v1/stats/summary?' + qs.toString(), {credentials: 'same-origin'});

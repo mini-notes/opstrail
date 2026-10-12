@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.pagination import ALERT_PAGE_SIZE, paginate, resolve_size
-from app.api.params import OptInt, OptStr
+from app.api.params import OptInt, OptStr, parse_window
 from app.api.sorting import SortSpec, severity_rank
 from app.config import get_settings
 from app.db import get_session
@@ -109,6 +109,8 @@ def _delivery_query(
     team_id: int | None,
     q: str | None,
     days: int | None,
+    start: datetime | None = None,
+    end: datetime | None = None,
 ):
     """Deliveries, filtered.
 
@@ -138,7 +140,11 @@ def _delivery_query(
                 Notification.target.ilike(like),
             )
         )
-    if days:
+    if start and end:
+        stmt = stmt.where(
+            Notification.created_at >= start, Notification.created_at <= end
+        )
+    elif days:
         stmt = stmt.where(
             Notification.created_at >= datetime.now(UTC) - timedelta(days=days)
         )
@@ -169,6 +175,8 @@ def _filtered_query(
     label_source: str | None,
     q: str | None,
     days: int | None,
+    start: datetime | None = None,
+    end: datetime | None = None,
 ):
     stmt = select(Alert)
     if service_id:
@@ -192,7 +200,9 @@ def _filtered_query(
                 Alert.description.ilike(like),
             )
         )
-    if days:
+    if start and end:
+        stmt = stmt.where(Alert.starts_at >= start, Alert.starts_at <= end)
+    elif days:
         stmt = stmt.where(
             Alert.starts_at >= datetime.now(UTC) - timedelta(days=days)
         )
@@ -263,18 +273,26 @@ async def alerts_page(
     label_source: OptStr = None,
     q: OptStr = None,
     days: OptInt = None,
+    from_: OptStr = Query(None, alias="from"),
+    to: OptStr = None,
+    tz_offset: OptInt = None,
     size: OptInt = None,
     sort: OptStr = None,
     dir: OptStr = None,  # noqa: A002 - the query parameter is named `dir`
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
+    # The picker sends either a relative `days` or an absolute pair. Parsing
+    # here rather than in the query keeps the "unparseable means no window"
+    # rule in one place.
+    start, end, tz_offset_minutes = parse_window(from_, to, tz_offset)
     return await _render_alert_list(
         request, session, user,
         template="ui/alerts.html",
         page=page, size=size, sort_key=sort, sort_dir=dir,
         service_id=service_id, team_id=team_id, severity=severity,
         alert_status=alert_status, label_source=label_source, q=q, days=days,
+        start=start, end=end,
     )
 
 
@@ -284,6 +302,9 @@ async def unlabelled_page(
     page: int = Query(1, ge=1),
     q: OptStr = None,
     days: OptInt = None,
+    from_: OptStr = Query(None, alias="from"),
+    to: OptStr = None,
+    tz_offset: OptInt = None,
     size: OptInt = None,
     sort: OptStr = None,
     dir: OptStr = None,  # noqa: A002
@@ -295,12 +316,16 @@ async def unlabelled_page(
     This is the actionable backlog: each distinct alertname here is a missing
     `service`/`team` label on a Prometheus rule, or a missing label_rule.
     """
+    # The picker sends either a relative `days` or an absolute pair. Parsing
+    # here rather than in the query keeps the "unparseable means no window"
+    # rule in one place.
+    start, end, tz_offset_minutes = parse_window(from_, to, tz_offset)
     return await _render_alert_list(
         request, session, user,
         template="ui/unlabelled.html",
         page=page, size=size, sort_key=sort, sort_dir=dir, force_unlabelled=True,
         service_id=None, team_id=None, severity=None,
-        alert_status=None, q=q, days=days,
+        alert_status=None, q=q, days=days, start=start, end=end,
     )
 
 
@@ -416,12 +441,19 @@ async def set_label(
 async def dashboard_page(
     request: Request,
     days: int = Query(30, ge=1, le=365),
+    from_: OptStr = Query(None, alias="from"),
+    to: OptStr = None,
+    tz_offset: OptInt = None,
     service_id: OptInt = None,
     team_id: OptInt = None,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
-    scope = stats.Scope(days=days, service_id=service_id, team_id=team_id)
+    start, end, tz_offset_minutes = parse_window(from_, to, tz_offset)
+    scope = stats.Scope(
+        days=days, start=start, end=end, tz_offset_minutes=tz_offset_minutes,
+        service_id=service_id, team_id=team_id,
+    )
     services = (
         (await session.execute(select(Service).order_by(Service.key))).scalars().all()
     )
@@ -433,6 +465,10 @@ async def dashboard_page(
             "user": user,
             "unlabelled_count": await unlabelled_count(session),
             "days": days,
+            "filters": {
+                "days": days, "start": start, "end": end,
+                "tz_offset": tz_offset_minutes,
+            },
             "service_id": service_id,
             "team_id": team_id,
             "services": services,
@@ -457,6 +493,9 @@ async def deliveries_page(
     team_id: OptInt = None,
     q: OptStr = None,
     days: OptInt = None,
+    from_: OptStr = Query(None, alias="from"),
+    to: OptStr = None,
+    tz_offset: OptInt = None,
     size: OptInt = None,
     sort: OptStr = None,
     dir: OptStr = None,
@@ -468,6 +507,7 @@ async def deliveries_page(
     The dashboard chart answers "how many failed"; this answers "which one,
     and what did the other end say".
     """
+    start, end, tz_offset_minutes = parse_window(from_, to, tz_offset)
     filters = {
         "channel": channel,
         "delivery_status": delivery_status,
@@ -475,6 +515,8 @@ async def deliveries_page(
         "team_id": team_id,
         "q": q,
         "days": days,
+        "start": start,
+        "end": end,
     }
     stmt = _delivery_query(**filters).options(
         selectinload(Notification.alert).selectinload(Alert.service),

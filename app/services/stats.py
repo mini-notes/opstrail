@@ -11,29 +11,91 @@ opposite of ORDER BY), so `group_by("severity")` groups by the raw
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy import Select, String, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Alert, Notification, NotificationStatus, Service
 
+DEFAULT_DAYS = 30
+# Below this, a per-day line has too few points to read; at or above it, a
+# per-hour line has too many -- three days is already 72 points on a chart
+# 150px tall. Grafana solves this with a full unit ladder; two steps cover
+# every window this dashboard offers.
+HOURLY_BELOW = timedelta(days=2)
+
 
 @dataclass(slots=True)
 class Scope:
-    """What the dashboard is currently looking at."""
+    """What the dashboard is currently looking at.
 
-    days: int = 30
+    Two ways to say when: `days` is a window ending now, `start`/`end` is a
+    fixed one. An absolute window wins when both are given -- it is the more
+    specific statement, and the picker only ever sends one of them.
+
+    `tz_offset_minutes` is the VIEWER's offset from UTC, and it is not
+    cosmetic. "Alerts per day" and the hour/weekday heatmap both cut time
+    into buckets, and a day boundary in UTC is 07:00 in Vietnam: bucketing in
+    UTC while labelling in local time would put the morning's alerts on the
+    previous day. Storage and comparison stay in UTC throughout; the offset
+    is applied only where a bucket edge has to fall somewhere.
+    """
+
+    days: int | None = 30
+    start: datetime | None = None
+    end: datetime | None = None
     service_id: int | None = None
     team_id: int | None = None
+    tz_offset_minutes: int = 0
+
+    @property
+    def window(self) -> tuple[datetime, datetime]:
+        """(from, to), both aware UTC. Always bounded at both ends."""
+        if self.start is not None and self.end is not None:
+            return self.start, self.end
+        now = datetime.now(UTC)
+        return now - timedelta(days=self.days or DEFAULT_DAYS), now
 
     @property
     def since(self) -> datetime:
-        return datetime.now(UTC) - timedelta(days=self.days)
+        """Kept because it reads better at call sites that only need the
+        lower bound."""
+        return self.window[0]
+
+    @property
+    def is_absolute(self) -> bool:
+        return self.start is not None and self.end is not None
+
+    @property
+    def span(self) -> timedelta:
+        start, end = self.window
+        return end - start
+
+    @property
+    def tz(self) -> timezone:
+        return timezone(timedelta(minutes=self.tz_offset_minutes))
+
+
+def _local(column, scope: Scope):
+    """A timestamp shifted into the viewer's offset, for bucketing only.
+
+    Postgres stores timestamptz in UTC; adding the offset before truncating
+    is what makes a "day" mean the viewer's day. Never used for filtering --
+    the window bounds are already absolute instants, and shifting those too
+    would move the window instead of the bucket edges.
+    """
+    if not scope.tz_offset_minutes:
+        return column
+    return column + func.make_interval(0, 0, 0, 0, 0, scope.tz_offset_minutes)
 
 
 def _scoped(stmt: Select, scope: Scope) -> Select:
-    stmt = stmt.where(Alert.starts_at >= scope.since)
+    start, end = scope.window
+    # Bounded at BOTH ends. With only a lower bound an absolute window would
+    # silently run to now, and two charts on the same page would be counting
+    # different things.
+    stmt = stmt.where(Alert.starts_at >= start, Alert.starts_at <= end)
     if scope.service_id:
         stmt = stmt.where(Alert.service_id == scope.service_id)
     if scope.team_id:
@@ -69,7 +131,7 @@ async def headline(session: AsyncSession, scope: Scope) -> dict:
         .select_from(Notification)
         .join(Alert, Alert.id == Notification.alert_id)
         .where(Notification.status == NotificationStatus.failed)
-        .where(Alert.starts_at >= scope.since)
+        .where(Alert.starts_at >= scope.window[0], Alert.starts_at <= scope.window[1])
     )
     if scope.service_id:
         failed_stmt = failed_stmt.where(Alert.service_id == scope.service_id)
@@ -82,7 +144,12 @@ async def headline(session: AsyncSession, scope: Scope) -> dict:
         "firing": firing,
         "unlabelled": unlabelled,
         "failed_notifications": failed,
+        # What the window actually is, not how it was asked for: an absolute
+        # range has no "days", and the client needs the bounds to label axes.
         "days": scope.days,
+        "from": scope.window[0].isoformat(),
+        "to": scope.window[1].isoformat(),
+        "absolute": scope.is_absolute,
     }
 
 
@@ -91,29 +158,61 @@ async def headline(session: AsyncSession, scope: Scope) -> dict:
 # --------------------------------------------------------------------------
 
 async def alerts_per_day(session: AsyncSession, scope: Scope) -> list[dict]:
-    """Alert count per calendar day, zero-filled.
+    """Alert count per bucket across the window, zero-filled.
 
-    Zero-filling matters: a line that simply skips quiet days draws straight
-    through an outage-free week and misreads as constant load.
+    Zero-filling matters: a line that simply skips quiet buckets draws
+    straight through an outage-free week and misreads as constant load.
+
+    Buckets are the VIEWER's days (or hours), not UTC ones. Somebody in
+    Vietnam looking at "yesterday" means their yesterday, and a UTC day
+    boundary would file their morning under the day before.
     """
-    day = func.date_trunc("day", Alert.starts_at)
+    hourly = scope.span <= HOURLY_BELOW
+    unit = "hour" if hourly else "day"
+    step = timedelta(hours=1) if hourly else timedelta(days=1)
+
+    bucket = func.date_trunc(unit, _local(Alert.starts_at, scope))
     rows = (
         await session.execute(
-            _scoped(select(day.label("day"), func.count(Alert.id)), scope)
-            .group_by(day)
-            .order_by(day)
+            _scoped(select(bucket.label("bucket"), func.count(Alert.id)), scope)
+            .group_by(bucket)
+            .order_by(bucket)
         )
     ).all()
-    counts = {r[0].date(): r[1] for r in rows}
+    # date_trunc on a shifted timestamptz comes back as timestamptz in the
+    # session zone (UTC); the shift is already baked into the value, so the
+    # key is the naive local instant.
+    counts = {r[0].replace(tzinfo=None): r[1] for r in rows}
 
-    today = datetime.now(UTC).date()
-    return [
-        {
-            "day": (today - timedelta(days=offset)).isoformat(),
-            "count": counts.get(today - timedelta(days=offset), 0),
-        }
-        for offset in range(scope.days - 1, -1, -1)
-    ]
+    start, end = scope.window
+    tz = scope.tz
+    last = end.astimezone(tz).replace(tzinfo=None)
+
+    if scope.is_absolute:
+        # Span the whole range; the first and last buckets may be partial,
+        # which is what an absolute range means.
+        cursor = _truncate(start.astimezone(tz).replace(tzinfo=None), unit)
+    else:
+        # "Last 7 days" has always meant seven labels ending today, and the
+        # tiles beside the chart are counted over the same rolling window.
+        # Anchoring on the end keeps both, rather than quietly turning it
+        # into eight buckets the first of which is a part-day.
+        buckets = int(scope.span / step) or 1
+        cursor = _truncate(last, unit) - step * (buckets - 1)
+
+    out = []
+    # Bounded: a malformed window must not spin. 400 points is already more
+    # than the chart can draw usefully.
+    while cursor <= last and len(out) < 1000:
+        out.append({"day": cursor.isoformat(), "count": counts.get(cursor, 0)})
+        cursor += step
+    return out
+
+
+def _truncate(moment: datetime, unit: str) -> datetime:
+    if unit == "hour":
+        return moment.replace(minute=0, second=0, microsecond=0)
+    return moment.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 async def top_services(session: AsyncSession, scope: Scope, limit: int = 10) -> list[dict]:
@@ -233,8 +332,12 @@ async def hour_weekday_heatmap(session: AsyncSession, scope: Scope) -> list[dict
     Dense rather than sparse: an empty cell is information (nothing fires at
     04:00 on Sunday) and the client should not have to invent the gaps.
     """
-    dow = func.extract("dow", Alert.starts_at)
-    hour = func.extract("hour", Alert.starts_at)
+    # The viewer's clock, not UTC. "Nothing fires at 04:00" is a claim about
+    # the hour people are asleep where they live; in UTC it would be a claim
+    # about 11:00 in Vietnam, which is the opposite of what the chart says.
+    local = _local(Alert.starts_at, scope)
+    dow = func.extract("dow", local)
+    hour = func.extract("hour", local)
     rows = (
         await session.execute(
             _scoped(
@@ -279,7 +382,8 @@ async def notification_health(session: AsyncSession, scope: Scope) -> list[dict]
         )
         .select_from(Notification)
         .join(Alert, Alert.id == Notification.alert_id)
-        .where(Alert.starts_at >= scope.since)
+        .where(Alert.starts_at >= scope.window[0],
+               Alert.starts_at <= scope.window[1])
         .group_by(Notification.channel)
     )
     if scope.service_id:

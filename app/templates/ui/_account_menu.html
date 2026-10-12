@@ -30,6 +30,15 @@
       </div>
     </div>
 
+    <div class="menu-section">
+      <span class="menu-label">Múi giờ</span>
+      <div class="theme-switch" role="group" aria-label="Timezone">
+        <button type="button" data-tz-set="local">Máy tôi</button>
+        <button type="button" data-tz-set="utc">UTC</button>
+      </div>
+      <p class="hint" style="margin:6px 8px 0" data-tz-current></p>
+    </div>
+
     <form method="post" action="/logout">
       <button class="menu-item danger" type="submit" role="menuitem">Sign out</button>
     </form>
@@ -56,6 +65,30 @@
       b.classList.toggle('on', v === (current || 'system'));
     });
   }
+
+  function markTz() {
+    var utc = false;
+    try { utc = localStorage.getItem('opstrail-tz') === 'utc'; } catch (e) {}
+    menu.querySelectorAll('[data-tz-set]').forEach(function (b) {
+      b.classList.toggle('on', (b.getAttribute('data-tz-set') === 'utc') === utc);
+    });
+    var note = menu.querySelector('[data-tz-current]');
+    if (note && window.opstrailTimezone) {
+      note.textContent = 'Đang hiện giờ theo ' + window.opstrailTimezone.label() + '.';
+    }
+  }
+  markTz();
+  menu.querySelectorAll('[data-tz-set]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var wantUTC = btn.getAttribute('data-tz-set') === 'utc';
+      var isUTC = false;
+      try { isUTC = localStorage.getItem('opstrail-tz') === 'utc'; } catch (e) {}
+      if (wantUTC !== isUTC && window.opstrailTimezone) {
+        window.opstrailTimezone.toggle();
+      }
+      markTz();
+    });
+  });
 
   menu.querySelectorAll('[data-theme-set]').forEach(function (btn) {
     btn.addEventListener('click', function () {

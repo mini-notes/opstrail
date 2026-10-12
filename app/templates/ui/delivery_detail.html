@@ -17,9 +17,9 @@
       <tr><th>Tries</th><td class="mono">{{ note.attempts }}</td></tr>
       <tr><th>HTTP</th><td class="mono">{{ note.response_status or '—' }}</td></tr>
       <tr><th>Duration</th><td class="mono">{{ '%.0f ms'|format(note.duration_ms) if note.duration_ms else '—' }}</td></tr>
-      <tr><th>Queued</th><td class="mono">{{ note.created_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td></tr>
-      <tr><th>Sent</th><td class="mono">{{ note.sent_at.strftime('%Y-%m-%d %H:%M:%S') ~ ' UTC' if note.sent_at else '—' }}</td></tr>
-      <tr><th>Next try</th><td class="mono">{{ note.next_attempt_at.strftime('%Y-%m-%d %H:%M:%S') ~ ' UTC' if note.next_attempt_at else '—' }}</td></tr>
+      <tr><th>Queued</th><td class="mono"><time datetime="{{ note.created_at.isoformat() }}" data-seconds="1">{{ note.created_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</time></td></tr>
+      <tr><th>Sent</th><td class="mono">{% if note.sent_at %}<time datetime="{{ note.sent_at.isoformat() }}" data-seconds="1">{{ note.sent_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</time>{% else %}—{% endif %}</td></tr>
+      <tr><th>Next try</th><td class="mono">{% if note.next_attempt_at %}<time datetime="{{ note.next_attempt_at.isoformat() }}" data-seconds="1">{{ note.next_attempt_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</time>{% else %}—{% endif %}</td></tr>
       <tr>
         <th>Target</th>
         <td class="mono small">
@@ -47,7 +47,7 @@
       <tr><th>Status</th><td><span class="pill {{ note.alert.status.value }}">{{ note.alert.status.value }}</span></td></tr>
       <tr><th>Service</th><td>{{ note.alert.service.key if note.alert.service else '—' }}</td></tr>
       <tr><th>Team</th><td>{{ note.alert.team.key if note.alert.team else '—' }}</td></tr>
-      <tr><th>Started</th><td class="mono">{{ note.alert.starts_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td></tr>
+      <tr><th>Started</th><td class="mono"><time datetime="{{ note.alert.starts_at.isoformat() }}" data-seconds="1">{{ note.alert.starts_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</time></td></tr>
       <tr><th>Summary</th><td>{{ note.alert.summary or '—' }}</td></tr>
     </table>
   </section>

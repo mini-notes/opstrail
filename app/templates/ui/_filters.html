@@ -23,12 +23,7 @@
   <input type="search" name="q" value="{{ filters.q or '' }}"
          placeholder="{{ search_placeholder|default('Search name or summary') }}">
   {% if filter_fields %}{% include filter_fields %}{% endif %}
-  <select name="days">
-    <option value="">All time</option>
-    {% for d in [1, 7, 30, 90] %}
-      <option value="{{ d }}" {{ 'selected' if filters.days == d }}>Last {{ d }}d</option>
-    {% endfor %}
-  </select>
+  {% with hx_target = tgt %}{% include "ui/_timerange.html" %}{% endwith %}
   <noscript><button type="submit">Filter</button></noscript>
   <a class="link" href="{{ reset_url }}">Reset</a>
   <span class="busy">updating…</span>

@@ -22,7 +22,7 @@
       <td>{{ a.team.key if a.team else '—' }}</td>
       <td>{% if a.label_source %}<span class="tag {{ a.label_source.value }}">{{ a.label_source.value }}</span>
           {% else %}<span class="tag none">none</span>{% endif %}</td>
-      <td class="mono">{{ a.starts_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="mono"><time datetime="{{ a.starts_at.isoformat() }}">{{ a.starts_at.strftime('%Y-%m-%d %H:%M') }} UTC</time></td>
       <td class="mono">{% if a.ends_at %}{{ (a.ends_at - a.starts_at)|string|truncate(8, True, '') }}{% else %}—{% endif %}</td>
       {% if show_rule_shortcut %}
       <td onclick="event.stopPropagation()">

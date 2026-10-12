@@ -1,0 +1,31 @@
+{# Shared time picker: relative presets, or a fixed range.
+
+   The relative select is the whole control when JavaScript is off -- the
+   absolute inputs need JS to report the viewer's UTC offset, and without
+   that offset a wall-clock reading is ambiguous. Degrading to "relative
+   only" is honest; guessing the zone would not be.
+
+   Params: filters (with days/start/end), and optionally hx_target. #}
+{% set tgt = hx_target|default('#alertTable') %}
+<span class="timerange" data-timerange>
+  <select name="days" data-tr-days>
+    <option value="">All time</option>
+    {% for d in [1, 7, 30, 90] %}
+      <option value="{{ d }}" {{ 'selected' if filters.days == d and not filters.start }}>Last {{ d }}d</option>
+    {% endfor %}
+    <option value="abs" {{ 'selected' if filters.start }} data-tr-abs>Khoảng cụ thể…</option>
+  </select>
+
+  <span class="trabs" data-tr-fields {{ 'hidden' if not filters.start }}>
+    <input type="datetime-local" data-tr-from aria-label="Từ">
+    <span class="muted small">→</span>
+    <input type="datetime-local" data-tr-to aria-label="Đến">
+    <span class="muted small" data-tr-zone></span>
+  </span>
+
+  {# What actually goes on the wire: ISO wall-clock plus the viewer's offset,
+     filled in by JS from the two inputs above. #}
+  <input type="hidden" name="from" value="{{ filters.start.isoformat() if filters.start else '' }}" data-tr-hidden-from>
+  <input type="hidden" name="to" value="{{ filters.end.isoformat() if filters.end else '' }}" data-tr-hidden-to>
+  <input type="hidden" name="tz_offset" value="{{ filters.tz_offset if filters.tz_offset is defined else '' }}" data-tr-hidden-tz>
+</span>

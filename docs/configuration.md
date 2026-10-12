@@ -17,6 +17,9 @@ Toàn bộ biến môi trường và cách cắm MS Teams.
 | `NOTIFICATION_RETENTION_MONTHS` | `3` | Lịch sử gửi. Chỉ có tác dụng khi **ngắn hơn** `ALERT_RETENTION_MONTHS` — xoá alert là các dòng gửi đi theo bằng CASCADE. Đặt bằng hoặc dài hơn thì cảnh báo lúc khởi động |
 | `RETENTION_HOUR_UTC` | `3` | |
 
+> Mọi mốc thời gian lưu trong DB là **UTC**. Múi giờ chỉ áp ở lớp hiển thị
+> và ở ranh giới bucket biểu đồ — xem [ui.md](ui.md#múi-giờ).
+
 ### Xác thực khi gọi Power Automate
 
 Mặc định OpsTrail gọi URL Power Automate **không kèm header nào** — URL là toàn

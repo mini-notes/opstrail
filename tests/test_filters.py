@@ -109,3 +109,51 @@ def test_delivery_filters_with_values_still_arrive():
         "q": None, "severity": None,
         "channel": "msteams", "delivery_status": "failed",
     }
+
+
+# ---------------------------------------------------------------------------
+# the time picker's own parameters
+# ---------------------------------------------------------------------------
+
+from app.api.params import parse_window  # noqa: E402
+
+EMPTY_WINDOW = "?days=&from=&to=&tz_offset="
+
+
+def test_an_empty_time_picker_is_not_a_window():
+    """Reset submits every field blank, including the absolute pair."""
+    start, end, offset = parse_window("", "", None)
+    assert (start, end, offset) == (None, None, 0)
+
+
+def test_a_local_reading_becomes_an_instant():
+    start, end, offset = parse_window("2026-10-12T14:00", "2026-10-12T16:00", 420)
+    assert start.isoformat() == "2026-10-12T07:00:00+00:00"
+    assert end.isoformat() == "2026-10-12T09:00:00+00:00"
+    assert offset == 420
+
+
+def test_a_reversed_range_is_swapped_rather_than_refused():
+    """Dragging a date picker backwards is a normal mistake, and an empty
+    dashboard is a worse answer than the range they clearly meant."""
+    start, end, _ = parse_window("2026-10-12T16:00", "2026-10-12T14:00", 0)
+    assert start < end
+
+
+@pytest.mark.parametrize("bad", ["yesterday", "2026-13-45T99:99", "???"])
+def test_an_unparseable_range_falls_back_instead_of_failing(bad):
+    """A mangled `?from=` in a pasted URL should draw the default view, not
+    refuse to draw anything."""
+    assert parse_window(bad, "2026-10-12T16:00", 0) == (None, None, 0)
+
+
+def test_an_absurd_offset_is_ignored():
+    """Nothing on earth is more than 14 hours from UTC; a larger value is a
+    broken client, and trusting it would shift every day boundary."""
+    _s, _e, offset = parse_window("2026-10-12T14:00", "2026-10-12T16:00", 99999)
+    assert offset == 0
+
+
+def test_a_value_that_already_carries_an_offset_is_taken_as_written():
+    start, _e, _o = parse_window("2026-10-12T14:00:00+07:00", "2026-10-12T16:00:00+07:00", 0)
+    assert start.isoformat() == "2026-10-12T07:00:00+00:00"

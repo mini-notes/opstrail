@@ -350,3 +350,10 @@ button.danger:hover{background:color-mix(in srgb,var(--bad) var(--tint),transpar
 :root[data-theme="dark"] .cardframe{background:#2b2b2b;border-color:#3a3a3a}
 .tplgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 @media (max-width:1100px){.tplgrid{grid-template-columns:1fr}}
+
+/* Time picker. The absolute fields sit inline with the preset select so the
+   filter bar does not change height when they appear. */
+.timerange{display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
+.timerange .trabs{display:inline-flex;gap:6px;align-items:center}
+.timerange .trabs[hidden]{display:none}
+.timerange input[type=datetime-local]{font-size:13px}

@@ -18,7 +18,7 @@
   <tbody>
   {% for n in deliveries %}
     <tr onclick="location='/deliveries/{{ n.id }}'">
-      <td class="mono">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="mono"><time datetime="{{ n.created_at.isoformat() }}">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</time></td>
       <td>
         <span class="pill {{ n.status.value }}">{{ n.status.value }}</span>
         {% if n.last_error and n.status.value == 'sent' %}

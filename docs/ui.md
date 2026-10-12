@@ -59,6 +59,33 @@ trang và một bản ghi khác biến mất.
 danh sách rơi về mặc định. Đổi số dòng hoặc đổi cột sắp xếp đều quay về trang
 1 và **giữ nguyên filter** đang áp.
 
+## Khoảng thời gian
+
+Bộ chọn dùng chung cho **Alerts**, **Unlabelled**, **Deliveries** và
+**Dashboard**: vài mốc tương đối sẵn (`Last 1d/7d/30d/90d`), hoặc chọn
+**Khoảng cụ thể…** để hiện hai ô nhập ngày giờ.
+
+Khoảng tuyệt đối đi vào URL (`?from=…&to=…&tz_offset=…`) nên dán được vào
+ticket, và bấm từ ô số liệu trên dashboard sang Alerts thì khoảng đang xem đi
+theo — hai trang không nói hai con số khác nhau.
+
+### Múi giờ
+
+Nhập và hiển thị theo **múi của máy bạn**, đổi về UTC trong menu tài khoản.
+Nhãn múi giờ luôn hiện cạnh mốc thời gian (`2026-10-12 09:01 UTC+07:00`) để
+không ai phải đoán.
+
+Múi giờ **không chỉ là chuyện hiển thị**: nó quyết định ranh giới ngày trên
+biểu đồ. 22:00 UTC là 05:00 **hôm sau** ở Việt Nam, nên gom theo ngày UTC mà
+dán nhãn giờ địa phương sẽ xếp alert buổi sáng vào ngày hôm trước. Cả biểu đồ
+*Alerts per day* lẫn heatmap giờ/thứ đều cắt theo múi của bạn.
+
+Trước khi JS chạy, trang hiện sẵn giờ UTC — đọc được ngay, và nếu JS không
+chạy thì vẫn đúng, chỉ là không đổi sang giờ địa phương.
+
+Khoảng ngắn (≤ 2 ngày) tự chia theo **giờ** thay vì theo ngày; dài hơn thì
+theo ngày — 3 ngày đã là 72 điểm trên một biểu đồ cao 150px.
+
 ## Theme sáng / tối
 
 Nút ☀ / 🌙 / 🖥 trong dropdown tài khoản góc phải. Lần đầu theo cài đặt hệ

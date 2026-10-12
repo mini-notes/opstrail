@@ -53,9 +53,9 @@
   <section class="card">
     <h2>Timing</h2>
     <dl>
-      <dt>Started</dt><dd class="mono">{{ alert.starts_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</dd>
+      <dt>Started</dt><dd class="mono"><time datetime="{{ alert.starts_at.isoformat() }}" data-seconds="1">{{ alert.starts_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</time></dd>
       <dt>Ended</dt>
-      <dd class="mono">{{ alert.ends_at.strftime('%Y-%m-%d %H:%M:%S UTC') if alert.ends_at else '— still firing —' }}</dd>
+      <dd class="mono">{% if alert.ends_at %}<time datetime="{{ alert.ends_at.isoformat() }}" data-seconds="1">{{ alert.ends_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</time>{% else %}— still firing —{% endif %}</dd>
       <dt>Duration</dt>
       <dd class="mono">{{ (alert.ends_at - alert.starts_at) if alert.ends_at else '—' }}</dd>
       <dt>Fingerprint</dt><dd class="mono">{{ alert.fingerprint }}</dd>
