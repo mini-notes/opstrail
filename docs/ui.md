@@ -65,6 +65,8 @@ Bộ chọn dùng chung cho **Alerts**, **Unlabelled**, **Deliveries** và
 **Dashboard**: vài mốc tương đối sẵn (`Last 1d/7d/30d/90d`), hoặc chọn
 **Khoảng cụ thể…** để hiện hai ô nhập ngày giờ.
 
+![Bộ chọn khoảng thời gian](images/timerange.png)
+
 Khoảng tuyệt đối đi vào URL (`?from=…&to=…&tz_offset=…`) nên dán được vào
 ticket, và bấm từ ô số liệu trên dashboard sang Alerts thì khoảng đang xem đi
 theo — hai trang không nói hai con số khác nhau.
