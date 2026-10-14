@@ -304,3 +304,50 @@ def test_every_context_variable_is_documented():
         "undocumented": produced - documented,
         "described but not produced": documented - produced,
     }
+
+
+# ---------------------------------------------------------------------------
+# the examples in the docs
+# ---------------------------------------------------------------------------
+
+def _doc_templates() -> list[tuple[int, str]]:
+    """Complete card templates from docs/teams-template-howto.md.
+
+    Only the blocks that are whole cards; the guide also shows fragments to
+    make a point about one line at a time.
+    """
+    import pathlib
+    import re
+
+    guide = pathlib.Path(__file__).resolve().parent.parent / "docs" / "teams-template-howto.md"
+    blocks = re.findall(r"```jinja\n(.*?)```", guide.read_text(), re.S)
+    return [(i, b) for i, b in enumerate(blocks, 1) if '"type": "AdaptiveCard"' in b]
+
+
+@pytest.mark.parametrize("index,source", _doc_templates())
+def test_the_guides_examples_actually_render(index, source):
+    """A copy-pasteable example that does not paste is worse than none: the
+    reader assumes they mistyped it and goes looking in the wrong place.
+
+    Rendered against the sparsest alert the system can produce -- no service,
+    no measurement, no runbook, not even an alertname -- because that is the
+    shape the guide promises these examples survive.
+    """
+    sparse = make_alert(
+        alertname=None, severity=None, summary=None, description=None,
+        labels={}, annotations={}, generator_url=None, external_url=None,
+        status=AlertStatus.resolved,
+        ends_at=dt.datetime(2026, 10, 14, 9, 47, tzinfo=dt.UTC),
+    )
+    card = render.render_source(source, ctx(sparse))
+    assert card["type"] == "AdaptiveCard"
+
+
+def test_a_summary_with_quotes_in_it_does_not_break_the_examples():
+    """The `| tojson` rule the guide leads with, stated as a test. A double
+    quote inside an annotation used to be enough to break a whole card."""
+    index_source = _doc_templates()[-1][1]
+    alert = make_alert(summary='Disk "sda1" is full, 100% used')
+    card = render.render_source(index_source, ctx(alert))
+    texts = [b.get("text", "") for b in card["body"]]
+    assert any('Disk "sda1" is full, 100% used' in t for t in texts)

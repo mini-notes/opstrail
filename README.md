@@ -126,6 +126,7 @@ cp .env.local.example .env.local
 | [Metadata & owner](docs/metadata.md) | Khai báo team/service/owner, @mention trong Teams, quy trình test |
 | [Lịch sử gửi & retention](docs/ui.md#lịch-sử-gửi) | Trang Deliveries, chi tiết một lần gửi, hai cửa sổ retention |
 | [Xác thực Power Automate](docs/msteams-auth.md) | Entra ID OAuth hoặc header tĩnh, demo tại chỗ, xoay vòng bí mật |
+| [**Hướng dẫn tạo template Teams**](docs/teams-template-howto.md) | Từng bước từ con số không tới card dùng được, kèm ví dụ copy được |
 | [Template card Teams](docs/teams-template.md) | Sửa template trên UI, biến dùng được, hai lớp bảo vệ |
 | [Giao diện quản trị](docs/ui.md) | Điều hướng, bảng dữ liệu, sắp xếp, theme |
 | [Quản trị](docs/administration.md) | User, RBAC, audit log, retention |

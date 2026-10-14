@@ -1,5 +1,9 @@
 # Template card MS Teams
 
+> Lần đầu tạo template? Bắt đầu ở
+> **[Hướng dẫn tạo template](teams-template-howto.md)** — từng bước, có ví dụ
+> copy được. Trang này là tham chiếu.
+
 Sửa tại **Settings → Template Teams**. Lưu vào database nên **không cần deploy
 lại**. Chưa tạo template nào thì dùng bản mặc định trong image.
 
