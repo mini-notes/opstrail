@@ -357,3 +357,12 @@ button.danger:hover{background:color-mix(in srgb,var(--bad) var(--tint),transpar
 .timerange .trabs{display:inline-flex;gap:6px;align-items:center}
 .timerange .trabs[hidden]{display:none}
 .timerange input[type=datetime-local]{font-size:13px}
+
+/* The firing badge is a different kind of number from the unlabelled one --
+   something is broken right now, not merely untidy -- so it gets the bad
+   colour rather than the warning one. */
+.side-badge.bad{background:color-mix(in srgb,var(--bad) var(--tint),transparent);
+  color:var(--bad)}
+.side-badge[hidden]{display:none}
+/* A row that has been firing far longer than anything should. */
+.grid tbody tr.stale td{background:color-mix(in srgb,var(--warn) 6%,transparent)}

@@ -12,7 +12,7 @@ Design notes
   alerts" into an actionable backlog of missing label_rules.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -396,6 +396,14 @@ class Alert(Base):
             "starts_at",
             postgresql_where="label_source IS NULL",
         ),
+        # The sidebar badge counts the whole table with no time window, the
+        # same way the unlabelled badge does. This is what makes that
+        # affordable.
+        Index(
+            "ix_alerts_unacked",
+            "starts_at",
+            postgresql_where="status = 'firing' AND acked_at IS NULL",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -422,6 +430,29 @@ class Alert(Base):
     effective_severity: Mapped[str | None] = mapped_column(
         String(32), nullable=True
     )
+
+    @property
+    def age_hours(self) -> float | None:
+        """How long this alert has been firing, in hours.
+
+        Only meaningful while firing -- a resolved alert has a duration, not
+        an age. Used to flag rows that have been burning implausibly long,
+        which almost always means the receiver lacks `send_resolved` and
+        OpsTrail was never told it ended.
+        """
+        if self.status is not AlertStatus.firing or self.starts_at is None:
+            return None
+        return (datetime.now(UTC) - self.starts_at).total_seconds() / 3600
+
+    @property
+    def is_acked(self) -> bool:
+        """`acked_at` is the marker, not `acked_by_id`.
+
+        Deleting a user nulls `acked_by_id` (ON DELETE SET NULL) but must not
+        push the alert back onto the unhandled worklist -- somebody did look
+        at it, even if that account is gone.
+        """
+        return self.acked_at is not None
 
     @property
     def acting_severity(self) -> str | None:
@@ -461,6 +492,21 @@ class Alert(Base):
     )
 
     # --- bookkeeping ---
+    # Who picked this alert up, and when. Separate from `assignee_id` on
+    # purpose: "this is yours" and "I have seen it" are different acts, and
+    # the number worth measuring here is the TIME -- how long an alert sat
+    # before anybody looked. assignee_id has nowhere to record that.
+    #
+    # Deliberately NOT refreshed by the ingest UPSERT, so an Alertmanager
+    # repeat does not undo somebody's decision. That protection is by
+    # ABSENCE from the set_ map in app/services/ingest.py, so a test pins it.
+    acked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    acked_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -471,6 +517,15 @@ class Alert(Base):
 
     service: Mapped["Service | None"] = relationship()
     team: Mapped["Team | None"] = relationship()
+    # Only ever read on the firing worklist, which eager-loads it; raising
+    # elsewhere keeps a lazy load from firing one query per row somewhere
+    # that never meant to ask.
+    # `foreign_keys` is required: alerts has TWO foreign keys to users --
+    # this one and the unused `assignee_id` seam -- so SQLAlchemy cannot pick
+    # a join on its own.
+    acked_by: Mapped["User | None"] = relationship(
+        lazy="raise", foreign_keys=[acked_by_id]
+    )
 
 
 class Notification(Base):

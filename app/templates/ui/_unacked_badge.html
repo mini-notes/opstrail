@@ -1,0 +1,9 @@
+{#- The sidebar badge, rendered on its own so an ack can send it back
+    out-of-band and keep the number honest without a page reload.
+
+    Always present in the DOM, hidden at zero rather than omitted: htmx can
+    only swap an element that already exists, and a badge that disappears at
+    zero has nothing to swap into when the count climbs again. -#}
+<em id="unackedBadge" class="side-badge bad"
+    {%- if oob %} hx-swap-oob="true"{% endif %}
+    {{ 'hidden' if not unacked_count }}>{{ unacked_count or '' }}</em>

@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.ui import unlabelled_count
+from app.api.ui import unacked_count, unlabelled_count
 from app.config import get_settings
 from app.db import get_session
 from app.models import User, UserRole
@@ -32,6 +32,7 @@ async def _page(request, session, user, *, ok=None):
         {
             "user": user,
             "unlabelled_count": await unlabelled_count(session),
+            "unacked_count": await unacked_count(session),
             "state": await retention.preview(),
             "hour": settings.retention_hour_utc,
             "can_run": user.role is UserRole.admin,

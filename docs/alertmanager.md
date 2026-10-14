@@ -14,6 +14,8 @@ receivers:
             credentials: <INTAKE_TOKEN>
 ```
 
+> Thiếu nó thì alert **không bao giờ** rời khỏi trang [Firing](ui.md#đang-cháy-chưa-ai-nhận) — nó sẽ phình ra cho tới khi trang đó vô dụng.
+
 ## `send_resolved: true` là bắt buộc
 
 Không có nó, OpsTrail **không bao giờ** biết alert kết thúc lúc nào:

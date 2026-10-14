@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     dispatch_max_backoff_seconds: float = 300.0
     dispatch_timeout_seconds: float = 15.0
 
+    # An alert firing longer than this is flagged on the firing worklist.
+    # Usually it means the receiver lacks `send_resolved: true`, so OpsTrail
+    # never learned it ended -- see docs/alertmanager.md. Nothing resolves it
+    # automatically: inventing an ending the system was never told about is
+    # worse than showing a stale row and saying why.
+    firing_stale_hours: int = 24
+
     # --- business calendar ---
     # The timezone severity_rules windows are read in: the exchange's clock.
     # This is NOT the display timezone, which follows each viewer's browser.

@@ -18,6 +18,13 @@
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8.5v-3a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0"/></svg>
       <span>Alerts</span>
     </a>
+    <a href="/firing" class="{{ 'on' if active == 'firing' }}" title="Đang cháy, chưa ai nhận">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M8 1.5s3.5 3 3.5 6a3.5 3.5 0 0 1-7 0c0-3 3.5-6 3.5-6z"/>
+      </svg>
+      <span>Firing</span>
+      {% include "ui/_unacked_badge.html" %}
+    </a>
     <a href="/unlabelled" class="{{ 'on' if active == 'unlabelled' }}" title="Unlabelled">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5L1.5 8 8 14.5 14.5 8z"/></svg>
       <span>Unlabelled</span>

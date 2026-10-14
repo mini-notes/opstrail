@@ -24,7 +24,7 @@
 <div class="tiles">
   <a class="tile" href="/alerts?days={{ days }}{{ '&service_id=' ~ service_id if service_id }}{{ '&team_id=' ~ team_id if team_id }}">
     <span class="n">{{ headline.alerts }}</span><span class="l">alerts</span></a>
-  <a class="tile {{ 'warn' if headline.firing }}" href="/alerts?alert_status=firing">
+  <a class="tile {{ 'warn' if headline.firing }}" href="/firing?show=all">
     <span class="n">{{ headline.firing }}</span><span class="l">still firing</span></a>
   <a class="tile {{ 'warn' if headline.unlabelled }}" href="/unlabelled">
     <span class="n">{{ headline.unlabelled }}</span><span class="l">unlabelled</span></a>

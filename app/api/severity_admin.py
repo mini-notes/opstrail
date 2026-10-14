@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.params import OptInt
-from app.api.ui import unlabelled_count
+from app.api.ui import unacked_count, unlabelled_count
 from app.config import get_settings
 from app.db import get_session
 from app.models import Alert, Service, SeverityRule, Team, User, UserRole
@@ -110,6 +110,7 @@ async def _page(request, session, user, *, error=None, ok=None):
         {
             "user": user,
             "unlabelled_count": await unlabelled_count(session),
+            "unacked_count": await unacked_count(session),
             "rules": evaluated,
             "sample": sample,
             "context": context,

@@ -48,8 +48,31 @@
 
   /* ---------------------------------------------------------------- display */
 
+  /* "3h 12m", for an alert that is still burning. Everything else in the app
+     measures a finished span (ends_at - starts_at); this is the only place
+     that counts from a start to now, which is why it lives here rather than
+     being rendered server-side and going stale the moment the page loads. */
+  function ageText(iso) {
+    var started = new Date(iso);
+    if (isNaN(started)) return null;
+    var mins = Math.floor((Date.now() - started.getTime()) / 60000);
+    if (mins < 0) return "vừa xong";
+    if (mins < 60) return mins + "m";
+    var hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + "h " + (mins % 60) + "m";
+    return Math.floor(hours / 24) + "d " + (hours % 24) + "h";
+  }
+
   function renderTimes(root) {
     (root || document).querySelectorAll("time[datetime]").forEach(function (el) {
+      if (el.dataset.age === "1") {
+        var age = ageText(el.getAttribute("datetime"));
+        if (age) {
+          el.textContent = age;
+          el.title = "Bắt đầu " + el.getAttribute("datetime");
+        }
+        return;
+      }
       var d = shifted(el.getAttribute("datetime"));
       if (!d) return;
       var withSeconds = el.dataset.seconds === "1";
@@ -132,6 +155,9 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () { boot(document); });
+  /* An age that stops counting is a lie that looks like data. A minute is
+     fine: nothing here is measured more finely than that. */
+  setInterval(function () { renderTimes(document); }, 60000);
   /* An outerHTML swap replaces the nodes these listeners were bound to, so a
      load-time pass alone stops working after the first filter change. */
   document.body.addEventListener("htmx:afterSwap", function (evt) {

@@ -7,11 +7,12 @@ already sitting in a Teams channel into a 404.
 """
 
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, Query, Request, status
-from fastapi.responses import RedirectResponse
-from sqlalchemy import func, or_, select
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,7 +21,15 @@ from app.api.params import OptInt, OptStr, parse_window
 from app.api.sorting import SortSpec, severity_rank
 from app.config import get_settings
 from app.db import get_session
-from app.models import Alert, LabelSource, Notification, Service, Team, User, UserRole
+from app.models import (
+    Alert,
+    LabelSource,
+    Notification,
+    Service,
+    Team,
+    User,
+    UserRole,
+)
 from app.security import current_user, require_role
 from app.services import audit, retention, stats
 from app.templating import templates
@@ -159,6 +168,42 @@ def _delivery_query(
     return stmt
 
 
+# Inlined rather than bound. `ix_alerts_unacked` is predicated on the literal
+# 'firing', and Postgres only uses a partial index when it can PROVE the
+# predicate from the query -- which a bind parameter defeats under a generic
+# plan. Measured: the bound form falls back to a Seq Scan over `alerts`, and
+# this count runs on every page render at eight call sites.
+_FIRING = literal_column("'firing'")
+
+
+# Oldest first, the opposite of every other alert list. On a worklist the
+# question is "what has been ignored longest", not "what just happened".
+#
+# A separate spec rather than passing sort_dir="asc": SortSpec.resolve
+# returns early when the URL carries no `?sort=` and discards the direction
+# with it, so a default direction can only be expressed here.
+FIRING_SORTS = replace(ALERT_SORTS, default_desc=False)
+
+
+async def unacked_count(session: AsyncSession) -> int:
+    """Badge on the sidebar: firing, and nobody has picked it up.
+
+    Counts the whole table with no time window, like unlabelled_count --
+    `ix_alerts_unacked` is the partial index that makes that affordable.
+
+    This number is the point of the feature. A plain "firing" count only
+    falls when the system heals itself; this one falls when a person acts,
+    which is what makes it a worklist rather than a thermometer.
+    """
+    return (
+        await session.execute(
+            select(func.count(Alert.id)).where(
+                Alert.status == _FIRING, Alert.acked_at.is_(None)
+            )
+        )
+    ).scalar_one()
+
+
 async def unlabelled_count(session: AsyncSession) -> int:
     """Badge on the sidebar. Turning the backlog into something visible beats
     relying on anyone remembering to go and look at it."""
@@ -185,6 +230,7 @@ def _filtered_query(
     days: int | None,
     start: datetime | None = None,
     end: datetime | None = None,
+    acked: bool | None = None,
 ):
     stmt = select(Alert)
     if service_id:
@@ -198,6 +244,10 @@ def _filtered_query(
         )
     if alert_status:
         stmt = stmt.where(Alert.status == alert_status)
+    if acked is False:
+        stmt = stmt.where(Alert.acked_at.is_(None))
+    elif acked is True:
+        stmt = stmt.where(Alert.acked_at.is_not(None))
     if label_source == "none":
         stmt = stmt.where(Alert.label_source.is_(None))
     elif label_source:
@@ -228,6 +278,8 @@ async def _render_alert_list(
     template: str,
     page: int,
     force_unlabelled: bool = False,
+    table_flags: dict | None = None,
+    spec: SortSpec | None = None,
     size: int | None = None,
     sort_key: str | None = None,
     sort_dir: str | None = None,
@@ -242,14 +294,19 @@ async def _render_alert_list(
         filters["label_source"] = "none"
 
     stmt = _filtered_query(**filters).options(
-        selectinload(Alert.service), selectinload(Alert.team)
+        selectinload(Alert.service),
+        selectinload(Alert.team),
+        # The firing worklist prints who acknowledged each row; `acked_by` is
+        # lazy="raise", so it has to be asked for here rather than tripped
+        # into one query per row.
+        selectinload(Alert.acked_by),
     )
     pg = await paginate(
         session,
         stmt,
         page=page,
         size=resolve_size(size, ALERT_PAGE_SIZE),
-        spec=ALERT_SORTS,
+        spec=spec or ALERT_SORTS,
         sort_key=sort_key,
         sort_dir=sort_dir,
     )
@@ -262,6 +319,13 @@ async def _render_alert_list(
     ctx = {
         "user": user,
         "unlabelled_count": await unlabelled_count(session),
+        "unacked_count": await unacked_count(session),
+        # Per-page table options travel in the context, not in a `{% with %}`
+        # around the include. The HTMX branch below renders the partial
+        # directly, so anything set in the page template is simply not there
+        # -- which made the "+ rule" column on /unlabelled vanish the moment
+        # anyone touched a filter.
+        **(table_flags or {}),
         "alerts": pg.items,
         "services": services,
         "teams": teams,
@@ -334,6 +398,7 @@ async def unlabelled_page(
     return await _render_alert_list(
         request, session, user,
         template="ui/unlabelled.html",
+        table_flags={"show_rule_shortcut": True},
         page=page, size=size, sort_key=sort, sort_dir=dir, force_unlabelled=True,
         service_id=None, team_id=None, severity=None,
         alert_status=None, q=q, days=days, start=start, end=end,
@@ -383,6 +448,7 @@ async def alert_detail(
         {
             "user": user,
             "unlabelled_count": await unlabelled_count(session),
+            "unacked_count": await unacked_count(session),
             "alert": alert,
             "notifications": notifications,
             "empty_reason": (
@@ -475,6 +541,7 @@ async def dashboard_page(
         {
             "user": user,
             "unlabelled_count": await unlabelled_count(session),
+            "unacked_count": await unacked_count(session),
             "days": days,
             "filters": {
                 "days": days, "start": start, "end": end,
@@ -545,6 +612,7 @@ async def deliveries_page(
     ctx = {
         "user": user,
         "unlabelled_count": await unlabelled_count(session),
+        "unacked_count": await unacked_count(session),
         "deliveries": pg.items,
         "services": services,
         "teams": teams,
@@ -603,8 +671,184 @@ async def delivery_detail(
         {
             "user": user,
             "unlabelled_count": await unlabelled_count(session),
+            "unacked_count": await unacked_count(session),
             "note": note,
             "show_target": show_target,
             "can_reveal": user.role is UserRole.admin,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# the firing worklist
+# ---------------------------------------------------------------------------
+
+@router.get("/firing")
+async def firing_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    show: OptStr = None,
+    q: OptStr = None,
+    days: OptInt = None,
+    from_: OptStr = Query(None, alias="from"),
+    to: OptStr = None,
+    tz_offset: OptInt = None,
+    size: OptInt = None,
+    sort: OptStr = None,
+    dir: OptStr = None,  # noqa: A002 - the query parameter is named `dir`
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Alerts that are firing and that nobody has picked up.
+
+    `/alerts?alert_status=firing` shows the same rows; what this page adds is
+    the acknowledgement. The count beside it in the sidebar is a worklist --
+    it falls when somebody acts, where a plain firing count only falls when
+    the system heals itself.
+
+    Oldest first by default, the opposite of /alerts. On a list of work, the
+    thing burning longest is the thing nobody has looked at. For a firing row
+    `ends_at` is NULL, so age is purely a function of `starts_at` -- no new
+    sort key needed, and it still uses `ix_alerts_firing`.
+    """
+    start, end, tz_offset_minutes = parse_window(from_, to, tz_offset)
+    settings = get_settings()
+    # How many have been burning implausibly long. Counted over the whole
+    # table rather than the current page: a banner that only notices zombies
+    # on page 1 is a banner that stops appearing as soon as there are enough
+    # of them to matter.
+    stale = (
+        await session.execute(
+            select(func.count(Alert.id)).where(
+                Alert.status == _FIRING,
+                Alert.acked_at.is_(None),
+                Alert.starts_at
+                < datetime.now(UTC) - timedelta(hours=settings.firing_stale_hours),
+            )
+        )
+    ).scalar_one()
+    return await _render_alert_list(
+        request, session, user,
+        template="ui/firing.html",
+        spec=FIRING_SORTS,
+        table_flags={
+            "show_age": True,
+            "show_ack": True,
+            "stale_hours": settings.firing_stale_hours,
+            "stale_count": stale,
+            "ack_user": user,
+        },
+        page=page, size=size, sort_key=sort, sort_dir=dir,
+        service_id=None, team_id=None, severity=None, label_source=None,
+        alert_status="firing",
+        acked=None if show == "all" else False,
+        q=q, days=days, start=start, end=end,
+    )
+
+
+async def _ack_response(request: Request, session: AsyncSession, user: User):
+    """The table the operator was looking at, plus a fresh sidebar badge.
+
+    The badge lives outside `#alertTable`, so swapping only the table would
+    leave a number that is wrong until the next full page load -- and a wrong
+    badge is worse than no badge. `hx-swap-oob` on the badge fragment fixes
+    that in the same response.
+    """
+    html = await _render_alert_list(
+        request, session, user,
+        template="ui/firing.html",
+        spec=FIRING_SORTS,
+        table_flags={
+            "show_age": True,
+            "show_ack": True,
+            "stale_hours": get_settings().firing_stale_hours,
+            "ack_user": user,
+        },
+        page=1, size=None, sort_key=None, sort_dir="asc",
+        service_id=None, team_id=None, severity=None, label_source=None,
+        alert_status="firing", acked=False, q=None, days=None,
+    )
+    badge = templates.get_template("ui/_unacked_badge.html").render(
+        unacked_count=await unacked_count(session), oob=True
+    )
+    return HTMLResponse(html.body.decode() + badge)
+
+
+@router.post("/alerts/{alert_id}/ack")
+async def acknowledge(
+    alert_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Claim an alert.
+
+    Deliberately NOT gated on `editor`, and the only write in OpsTrail that
+    is not. The on-call shift usually holds read-only accounts; requiring
+    editor would mean either handing the whole rota write access -- which
+    empties RBAC of meaning -- or nobody using this. Acknowledging touches no
+    source data: it records that a person is looking, and it is audited.
+    """
+    alert = await session.get(Alert, alert_id)
+    if alert is None:
+        return RedirectResponse("/firing", status_code=status.HTTP_303_SEE_OTHER)
+
+    if alert.acked_at is None:
+        alert.acked_at = datetime.now(UTC)
+        alert.acked_by_id = user.id
+        await audit.record(
+            session, user, "alert.ack",
+            object_type="alert", object_id=alert_id,
+            detail={"alertname": alert.alertname},
+        )
+        await session.commit()
+
+    if request.headers.get("hx-request") == "true":
+        return await _ack_response(request, session, user)
+    return RedirectResponse("/firing", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def can_unack(user: User, alert: Alert) -> bool:
+    """Who may take an acknowledgement back.
+
+    The acker, or any editor. Both alternatives are worse: let any viewer
+    revoke anyone's ack and a bystander can quietly put an attended alert
+    back on the worklist; restrict it to editors and the person who
+    mis-clicked at 3am cannot undo their own mistake, which is the whole
+    reason the button exists.
+
+    An ack whose `acked_by_id` is NULL -- the acker was offboarded, see the
+    ON DELETE SET NULL on the column -- has no owner left to claim it, so it
+    falls through to editors.
+    """
+    if user.role in (UserRole.editor, UserRole.admin):
+        return True
+    return alert.acked_by_id is not None and alert.acked_by_id == user.id
+
+
+@router.post("/alerts/{alert_id}/unack")
+async def release(
+    alert_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Put an alert back on the worklist -- a misclick, or a handover."""
+    alert = await session.get(Alert, alert_id)
+    if alert is None:
+        return RedirectResponse("/firing", status_code=status.HTTP_303_SEE_OTHER)
+
+    if alert.acked_at is not None and can_unack(user, alert):
+        was = alert.acked_by_id
+        alert.acked_at = None
+        alert.acked_by_id = None
+        await audit.record(
+            session, user, "alert.unack",
+            object_type="alert", object_id=alert_id,
+            detail={"was_acked_by": was},
+        )
+        await session.commit()
+
+    if request.headers.get("hx-request") == "true":
+        return await _ack_response(request, session, user)
+    return RedirectResponse("/firing", status_code=status.HTTP_303_SEE_OTHER)

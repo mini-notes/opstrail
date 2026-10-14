@@ -210,3 +210,28 @@ def test_delivery_sort_has_a_tiebreaker():
     tiebreaker, LIMIT/OFFSET puts one row on two pages and loses another."""
     clauses = DELIVERY_SORTS.resolve("status", DESC).clauses()
     assert "notifications.id" in str(clauses[-1])
+
+
+def test_the_firing_worklist_defaults_to_oldest_first():
+    """The opposite of every other alert list, deliberately: on a worklist
+    the question is "what has been ignored longest".
+
+    It needs its own SortSpec rather than a default direction passed at the
+    call site, because `resolve` returns early when the URL carries no
+    `?sort=` and discards the direction along with it -- which silently gave
+    newest-first the first time this was built.
+    """
+    from app.api.ui import ALERT_SORTS, FIRING_SORTS
+
+    firing = FIRING_SORTS.resolve(None, None)
+    alerts = ALERT_SORTS.resolve(None, None)
+
+    assert firing.key == alerts.key == "started"
+    assert firing.desc is False
+    assert alerts.desc is True, "the alerts page must keep newest first"
+
+
+def test_an_explicit_direction_still_wins_on_the_worklist():
+    from app.api.ui import FIRING_SORTS
+
+    assert FIRING_SORTS.resolve("started", DESC).desc is True

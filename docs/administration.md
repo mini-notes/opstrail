@@ -27,7 +27,7 @@ Sau đó quản lý user trên UI tại **Admin → Users** (chỉ `admin` vào 
 
 | Vai trò | Được làm |
 |---|---|
-| `viewer` | Chỉ đọc mọi trang |
+| `viewer` | Đọc mọi trang, **và bấm được "Đã nhận"** trên trang Firing |
 | `editor` | + gán nhãn tay, thêm/xoá service/team/rule, chạy backfill |
 | `admin` | + quản lý user |
 
@@ -35,6 +35,19 @@ Sau đó quản lý user trên UI tại **Admin → Users** (chỉ `admin` vào 
 tại, sai mật khẩu, tài khoản bị khoá) để không dò được tài khoản nào có thật.
 
 Tắt `is_active` là session bị huỷ ngay request kế tiếp, không chờ cookie hết hạn.
+
+### Vì sao viewer ghi được một thứ
+
+"Đã nhận" là thao tác ghi **duy nhất** viewer làm được, và đó là chủ ý:
+
+- Kíp trực thường chỉ có tài khoản đọc. Bắt phải là `editor` thì hoặc nâng
+  quyền cho cả kíp — làm RBAC thành vô nghĩa — hoặc không ai dùng tính năng.
+- Nó **không sửa dữ liệu nguồn**: không đổi nhãn, không đổi severity, không
+  đụng gì Alertmanager gửi. Nó ghi lại rằng có người đang xem.
+- Mọi lần bấm đều vào audit log (`alert.ack` / `alert.unack`) kèm người bấm.
+- **Bỏ nhận** thì chặt hơn: chỉ chính người đã nhận, hoặc editor trở lên. Một
+  người ngoài không được âm thầm đẩy alert người khác đang xử lý trở lại hàng
+  đợi.
 
 ## Chống tự khoá
 

@@ -131,6 +131,7 @@ def build_shots(page) -> list[dict]:
 
     shots = [
         shot("alerts-list", ALERTS, 1000),
+        shot("firing", "/firing?size=25", 1100),
         shot("alerts-sort-severity", BY_SEVERITY, 820),
         shot("alerts-pager", ALERTS, 1000, selector=".pager"),
         shot("timerange", ALERTS, 700, selector=".filters",

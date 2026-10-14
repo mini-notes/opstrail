@@ -18,6 +18,7 @@ Thu gọn rồi chỉ còn dải biểu tượng, phần nội dung rộng thêm
 |---|---|
 | `/alerts` | Danh sách, filter, sắp xếp, phân trang |
 | `/alerts/{id}` | Chi tiết + lịch sử delivery + gán nhãn tay |
+| `/firing` | **Việc phải làm**: alert đang cháy mà chưa ai nhận |
 | `/unlabelled` | Backlog alert chưa ai gán nhãn, có nút `+ rule` |
 | `/deliveries` | Mọi lần gửi: lọc theo channel, kết quả, service, team, thời gian |
 | `/deliveries/{id}` | Một lần gửi: mã HTTP, số lần thử, lỗi đầy đủ, alert liên quan |
@@ -99,6 +100,46 @@ Nút ☀ / 🌙 / 🖥 trong dropdown tài khoản góc phải. Lần đầu the
 Biểu đồ **vẽ lại** khi đổi theme. Canvas không phải CSS: thứ đã vẽ giữ nguyên
 màu lúc tạo, nên nếu không vẽ lại thì bấm "Light" xong chữ trên biểu đồ gần như
 vô hình.
+
+## Đang cháy, chưa ai nhận
+
+![Trang Firing](images/firing.png)
+
+`/alerts?alert_status=firing` hiện đúng những dòng này. Thứ trang Firing thêm
+vào là nút **Đã nhận** — và nhờ nó, con số trên sidebar mới là **việc phải
+làm**: nó giảm khi có người hành động, trong khi một con số "đang cháy" thuần
+tuý chỉ giảm khi hệ thống tự hết lỗi.
+
+**Cũ nhất lên đầu**, ngược với trang Alerts. Trên một danh sách việc, thứ cháy
+lâu nhất là thứ chưa ai nhìn tới.
+
+Cột **Đang cháy** đếm từ lúc alert bắt đầu tới hiện tại, cập nhật mỗi phút
+ngay trên trình duyệt. Mọi chỗ khác trong OpsTrail đo khoảng đã kết thúc
+(`ends_at - starts_at`); đây là chỗ duy nhất đếm tới *bây giờ*, nên nó phải
+tự chạy — một con số thời gian đứng yên là thông tin sai trông như dữ liệu.
+
+### Vòng đời một lần nhận
+
+| Chuyện gì xảy ra | Nhận còn không |
+|---|---|
+| Alertmanager gửi lại | **Còn** — lặp lại không phải sự kiện mới |
+| Chuyển sang resolved | **Còn** — đây là bản ghi ai đã xử lý |
+| Cháy lại sau khi resolved | **Mất** — nó hỏng lại, cần người lần nữa |
+| Xoá tài khoản người đã nhận | **Còn** — dòng không âm thầm quay lại hàng đợi |
+
+Viewer bấm "Đã nhận" được; **bỏ nhận** thì chỉ chính người đã nhận hoặc
+editor — xem [administration.md](administration.md#vì-sao-viewer-ghi-được-một-thứ).
+
+### ⚠️ Alert cháy mãi không tắt
+
+Dòng cháy quá 24 giờ được tô nhạt. Nguyên nhân gần như luôn là receiver thiếu
+`send_resolved: true`, nên OpsTrail **chưa bao giờ** được báo là nó đã tắt —
+xem [alertmanager.md](alertmanager.md).
+
+OpsTrail **không** tự resolve những dòng này. Bịa ra một kết thúc mà hệ thống
+không được báo là làm hỏng chính thứ nó đang ghi lại. Cách thoát là người xem
+rồi bấm "Đã nhận" — một quyết định của người, được ghi lại như quyết định của
+người.
 
 ## Lịch sử gửi
 

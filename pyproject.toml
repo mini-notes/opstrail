@@ -11,7 +11,9 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30",
     "psycopg[binary]>=3.2",   # sync driver, used by alembic
-    "alembic>=1.14",
+    # 1.16 for `if_not_exists=` on create_index, used by the acknowledgement
+    # migration. An older Alembic raises TypeError there rather than skipping.
+    "alembic>=1.16",
     "jinja2>=3.1",
     "httpx>=0.28",
     "apscheduler>=3.10",

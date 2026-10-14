@@ -8,13 +8,19 @@
     <th>Service</th><th>Team</th>
     {% with key='label',    label='Label'    %}{% include "ui/_sorth.html" %}{% endwith %}
     {% with key='started',  label='Started'  %}{% include "ui/_sorth.html" %}{% endwith %}
-    {% with key='duration', label='Duration' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% if show_age %}
+      {% with key='started', label='Đang cháy' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% else %}
+      {% with key='duration', label='Duration' %}{% include "ui/_sorth.html" %}{% endwith %}
+    {% endif %}
     {% endwith %}
     {% if show_rule_shortcut %}<th></th>{% endif %}
+    {% if show_ack %}<th>Người nhận</th><th></th>{% endif %}
   </tr></thead>
   <tbody>
   {% for a in alerts %}
-    <tr onclick="location='/alerts/{{ a.id }}'">
+    <tr onclick="location='/alerts/{{ a.id }}'"
+        {%- if show_age and stale_hours and a.age_hours is not none and a.age_hours >= stale_hours %} class="stale" title="Cháy hơn {{ stale_hours }} giờ — nhiều khả năng receiver thiếu send_resolved, nên OpsTrail chưa bao giờ biết nó đã tắt"{% endif %}>
       <td><span class="pill {{ a.status.value }}">{{ a.status.value }}</span></td>
       <td>
         <span class="sev sev-{{ (a.acting_severity or 'unknown')|lower }}">{{ a.acting_severity or '—' }}</span>
@@ -26,7 +32,36 @@
       <td>{% if a.label_source %}<span class="tag {{ a.label_source.value }}">{{ a.label_source.value }}</span>
           {% else %}<span class="tag none">none</span>{% endif %}</td>
       <td class="mono"><time datetime="{{ a.starts_at.isoformat() }}">{{ a.starts_at.strftime('%Y-%m-%d %H:%M') }} UTC</time></td>
+      {% if show_age %}
+      {# Rendered client-side from the start time; the absolute value here is
+         what shows before the script runs, and if it never does. #}
+      <td class="mono"><time datetime="{{ a.starts_at.isoformat() }}" data-age="1">{{ a.starts_at.strftime('%Y-%m-%d %H:%M') }} UTC</time></td>
+      {% else %}
       <td class="mono">{% if a.ends_at %}{{ (a.ends_at - a.starts_at)|string|truncate(8, True, '') }}{% else %}—{% endif %}</td>
+      {% endif %}
+      {% if show_ack %}
+      <td class="small">
+        {%- if a.is_acked %}
+          {{ a.acked_by.username if a.acked_by else 'đã xoá tài khoản' }}<br>
+          <time datetime="{{ a.acked_at.isoformat() }}" class="muted">{{ a.acked_at.strftime('%Y-%m-%d %H:%M') }} UTC</time>
+        {%- else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td onclick="event.stopPropagation()">
+        {% if a.is_acked and ack_user and (ack_user.role.value in ('editor','admin') or a.acked_by_id == ack_user.id) %}
+        <form method="post" action="/alerts/{{ a.id }}/unack" style="display:inline"
+              hx-post="/alerts/{{ a.id }}/unack" hx-target="#alertTable" hx-swap="outerHTML">
+          <button class="secondary small" type="submit">Bỏ nhận</button>
+        </form>
+        {% elif a.is_acked %}
+          <span class="muted small">—</span>
+        {% else %}
+        <form method="post" action="/alerts/{{ a.id }}/ack" style="display:inline"
+              hx-post="/alerts/{{ a.id }}/ack" hx-target="#alertTable" hx-swap="outerHTML">
+          <button type="submit">Đã nhận</button>
+        </form>
+        {% endif %}
+      </td>
+      {% endif %}
       {% if show_rule_shortcut %}
       <td onclick="event.stopPropagation()">
         <a class="link" href="/labels/rules?from_alert={{ a.id }}"
@@ -35,7 +70,9 @@
       {% endif %}
     </tr>
   {% else %}
-    <tr><td colspan="{{ 9 if show_rule_shortcut else 8 }}" class="empty">No alerts match these filters.</td></tr>
+    <tr><td colspan="{{ 8 + (1 if show_rule_shortcut else 0) + (2 if show_ack else 0) }}" class="empty">
+      {% if show_ack %}Không còn alert nào đang cháy mà chưa ai nhận.{% else %}No alerts match these filters.{% endif %}
+    </td></tr>
   {% endfor %}
   </tbody>
 </table>

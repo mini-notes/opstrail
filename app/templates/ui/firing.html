@@ -1,0 +1,37 @@
+{% extends "ui/base.html" %}
+{% set active = 'firing' %}
+{% block title %}Firing · OpsTrail{% endblock %}
+{% block content %}
+<h1>Đang cháy, chưa ai nhận</h1>
+<p class="muted">
+  Danh sách việc phải làm: alert Alertmanager vẫn báo là <code>firing</code> và
+  chưa ai bấm <b>Đã nhận</b>. Cũ nhất lên đầu — thứ cháy lâu nhất là thứ chưa
+  ai nhìn tới. Bấm <b>Đã nhận</b> để nó rời khỏi đây và badge bên trái giảm
+  ngay.
+</p>
+<p class="muted small">
+  {% if filters.acked is none %}
+    Đang xem <b>tất cả</b> alert đang cháy.
+    <a class="link" href="/firing">Chỉ xem cái chưa ai nhận →</a>
+  {% else %}
+    <a class="link" href="/firing?show=all">Xem cả những cái đã có người nhận →</a>
+  {% endif %}
+</p>
+{% if stale_count %}
+<p class="error">
+  <b>{{ stale_count }} alert đã cháy hơn {{ stale_hours }} giờ.</b>
+  Alertmanager chưa bao giờ báo rằng chúng kết thúc — gần như luôn là receiver
+  thiếu <code>send_resolved: true</code>. OpsTrail <b>không</b> tự resolve
+  chúng: bịa ra một kết thúc mà hệ thống không được báo là làm hỏng chính thứ
+  nó đang ghi lại. Xem
+  <a href="https://github.com/mini-notes/opstrail/blob/main/docs/alertmanager.md"
+     target="_blank" rel="noopener noreferrer">alertmanager.md</a>,
+  hoặc xem rồi bấm <b>Đã nhận</b> để chúng rời khỏi danh sách.
+</p>
+{% endif %}
+
+{% with reset_url = '/firing' %}
+  {% include "ui/_filters.html" %}
+{% endwith %}
+{% include "ui/_table.html" %}
+{% endblock %}

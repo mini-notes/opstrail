@@ -75,6 +75,24 @@ async def _effective_severity(session, am_alert, labels, attribution, rules):
         return None
 
 
+async def _clear_ack(session: AsyncSession, alert_id: int) -> None:
+    """Return a re-fired alert to the unhandled worklist, and say so."""
+    alert = await session.get(Alert, alert_id)
+    if alert is None or alert.acked_at is None:
+        return
+    was = alert.acked_by_id
+    alert.acked_at = None
+    alert.acked_by_id = None
+    try:
+        await audit.record(
+            session, None, "alert.ack.cleared",
+            object_type="alert", object_id=alert_id,
+            detail={"reason": "resolved -> firing", "was_acked_by": was},
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("could not record ack clearing for alert %s", alert_id)
+
+
 async def _record_attribution_change(
     session: AsyncSession, previous, alert_id: int, attribution
 ) -> None:
@@ -148,6 +166,7 @@ async def ingest_payload(
                     Alert.label_source,
                     Alert.service_id,
                     Alert.team_id,
+                    Alert.acked_at,
                 ).where(
                     Alert.fingerprint == am_alert.fingerprint,
                     Alert.starts_at == am_alert.startsAt,
@@ -232,6 +251,19 @@ async def ingest_payload(
         new_status = AlertStatus(am_alert.status)
         if previous_status is None or previous_status != new_status:
             notify_ids.append(alert_id)
+
+        # Broke again after being resolved: whoever said "I am on it" was
+        # talking about an episode that ended, so the alert goes back on the
+        # unhandled worklist. A plain repeat is NOT this -- the UPSERT leaves
+        # the ack columns alone, which is what keeps an acknowledgement from
+        # being undone every repeat_interval.
+        if (
+            previous is not None
+            and previous.acked_at is not None
+            and previous_status is AlertStatus.resolved
+            and new_status is AlertStatus.firing
+        ):
+            await _clear_ack(session, alert_id)
 
     await session.commit()
     log.info(
