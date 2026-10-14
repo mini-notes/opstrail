@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     dispatch_max_backoff_seconds: float = 300.0
     dispatch_timeout_seconds: float = 15.0
 
+    # --- business calendar ---
+    # The timezone severity_rules windows are read in: the exchange's clock.
+    # This is NOT the display timezone, which follows each viewer's browser.
+    # Sharing one setting would let somebody opening the dashboard from
+    # Singapore change what "during the trading session" means for everyone.
+    business_timezone: str = "Asia/Ho_Chi_Minh"
+
     # --- retention ---
     alert_retention_months: int = 6
     # Deliveries age out faster than the alerts they belong to: "did it go

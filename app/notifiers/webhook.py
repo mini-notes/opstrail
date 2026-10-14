@@ -29,8 +29,11 @@ def build_envelope(
         "fingerprint": alert.fingerprint,
         "status": alert.status.value,
         "alertname": alert.alertname,
-        "severity": band_severity(alert.severity),
+        "severity": band_severity(alert.acting_severity),
         "severity_raw": alert.severity,
+        # Present only when a severity rule moved it, so a consumer can tell
+        # an adjusted alert from one Prometheus called critical itself.
+        "severity_effective": alert.effective_severity,
         "service": service_name,
         "team": team_name,
         "summary": alert.summary,

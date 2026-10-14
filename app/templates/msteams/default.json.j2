@@ -49,6 +49,18 @@
       "wrap": true,
       "color": {{ accent | tojson }}
     }
+    {#- Only when a severity rule moved it. Whoever this wakes is entitled to
+        know the decision was OpsTrail's and not Prometheus's. -#}
+    {%- if severity_source and not resolved %},
+    {
+      "type": "TextBlock",
+      "text": {{ ("Mức do OpsTrail điều chỉnh — nguồn gửi: " ~ severity_source) | tojson }},
+      "wrap": true,
+      "isSubtle": true,
+      "size": "Small",
+      "spacing": "None"
+    }
+    {%- endif %}
     {%- if mention_text and not resolved %},
     {
       "type": "TextBlock",

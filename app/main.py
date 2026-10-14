@@ -15,6 +15,7 @@ from app.api import (
     labels,
     owners,
     retention_admin,
+    severity_admin,
     stats,
     templates_admin,
     ui,
@@ -24,7 +25,7 @@ from app.api import (
 from app.config import get_settings
 from app.scheduler import build_scheduler
 from app.security import NotAuthenticated
-from app.services import dispatch
+from app.services import dispatch, severity_rules
 from app.templating import TEMPLATE_DIR  # noqa: F401 - ensures templates resolve
 
 logging.basicConfig(
@@ -111,6 +112,11 @@ async def lifespan(app: FastAPI):
         )
 
     sweeper = asyncio.create_task(dispatch.dispatch_loop())
+    # Separate from the dispatch sweeper and much slower: this one exists so
+    # a severity window that opens while an alert is already firing takes
+    # effect within a minute instead of waiting for Alertmanager's next
+    # repeat, which is typically hours away.
+    severity_sweeper = asyncio.create_task(severity_rules.reevaluate_loop())
     scheduler = build_scheduler()
     scheduler.start()
     log.info("%s started", settings.app_name)
@@ -118,11 +124,16 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         scheduler.shutdown(wait=False)
-        sweeper.cancel()
-        try:
-            await sweeper
-        except asyncio.CancelledError:
-            pass
+        # Both are cancelled and both are awaited: cancel() only asks, and a
+        # task that is never awaited can still be mid-transaction when the
+        # process exits.
+        for task in (sweeper, severity_sweeper):
+            task.cancel()
+        for task in (sweeper, severity_sweeper):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="OpsTrail", version="0.1.0", lifespan=lifespan)
@@ -152,6 +163,7 @@ app.include_router(labels.router)
 app.include_router(owners.router)
 app.include_router(templates_admin.router)
 app.include_router(retention_admin.router)
+app.include_router(severity_admin.router)
 app.include_router(ui.router)
 
 

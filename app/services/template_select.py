@@ -44,6 +44,8 @@ log = logging.getLogger(__name__)
 # same thing, differing only when they disagree.
 DERIVED_KEYS: tuple[tuple[str, str], ...] = (
     ("status", "firing / resolved. Không bao giờ là label — Alertmanager gửi riêng"),
+    ("effective_severity", "Mức sau khi severity rule điều chỉnh. Vắng mặt nếu "
+                           "không rule nào áp — `severity` vẫn là nhãn gốc"),
     ("tier", "Tier của service, khai trong Labels → Services. NULL = chưa phân loại"),
     (
         "resolved_service",
@@ -82,6 +84,10 @@ def match_context(
 
     # Never a label: Alertmanager sends status outside `labels`.
     ctx["status"] = alert.status.value
+    # `severity` stays whatever Alertmanager sent; this is the adjusted one,
+    # under its own name so a template rule can pick either deliberately.
+    if alert.effective_severity:
+        ctx["effective_severity"] = alert.effective_severity.lower()
 
     if service is not None:
         ctx["resolved_service"] = service.key

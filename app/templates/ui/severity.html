@@ -1,0 +1,203 @@
+{% extends "ui/base.html" %}
+{% set active = 'severity' %}
+{% block title %}Severity · OpsTrail{% endblock %}
+{% block content %}
+<h1>Severity theo ngữ cảnh</h1>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<div class="good">
+  <b>Nhãn gốc không bao giờ bị sửa.</b> Rule ở đây ghi vào
+  <code>effective_severity</code> — thứ quyết định <b>gọi ai</b> và hiển thị
+  trên card. <code>severity</code> giữ nguyên đúng những gì Alertmanager gửi,
+  nên vẫn đối chiếu được với Prometheus.
+  <br>
+  <b>Hạ mức không bao giờ chặn alert.</b> Nó chỉ đổi người được mention — alert
+  vẫn lưu và vẫn gửi tới channel.
+</div>
+
+<div class="tplgrid">
+  <section class="card">
+    <h2>Bây giờ</h2>
+    <p>
+      <b><time datetime="{{ now.isoformat() }}" data-seconds="1">{{ now.strftime('%Y-%m-%d %H:%M:%S') }}</time></b>
+      theo <code>{{ tz_name }}</code>
+    </p>
+    <p class="hint">
+      Đây là múi giờ của <b>sàn</b>, khai bằng <code>BUSINESS_TIMEZONE</code> —
+      khác với múi giờ hiển thị ở menu tài khoản, vốn theo máy của từng người.
+      Phiên giao dịch không đổi theo chỗ ngồi của người đang xem.
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>Alert gần nhất sẽ ra mức nào</h2>
+    {% if sample %}
+      <p>
+        <b>{{ sample.alertname }}</b> —
+        nguồn <span class="sev sev-{{ (sample.severity or 'unknown')|lower }}">{{ sample.severity or '—' }}</span>
+        {% if winner %}
+          → <span class="sev sev-{{ (sample.effective_severity or sample.severity or 'unknown')|lower }}">{{ sample.effective_severity or sample.severity }}</span>
+          <span class="muted">theo rule <b>{{ winner.name }}</b></span>
+        {% else %}
+          <span class="muted">— không rule nào đang áp</span>
+        {% endif %}
+      </p>
+      <details>
+        <summary class="link">Khoá khớp được của alert này ({{ context|length }})</summary>
+        <table class="kv" style="margin-top:8px">
+          {% for k, v in context.items() %}
+          <tr><th class="mono">{{ k }}</th><td class="mono">{{ v }}</td></tr>
+          {% endfor %}
+        </table>
+        <p class="hint">
+          Điều kiện đặt trên khoá không có ở đây thì <b>không bao giờ</b> khớp.
+        </p>
+      </details>
+    {% else %}
+      <p class="muted">Chưa có alert nào để thử.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Rule — xét theo thứ tự ưu tiên</h2>
+  <table class="grid">
+    <thead><tr>
+      <th>Ưu tiên</th><th>Tên</th><th>Điều kiện</th><th>Khung giờ</th>
+      <th>Hành động</th><th>Trạng thái</th><th>Với alert gần nhất</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rules %}
+      <tr>
+        <td class="mono">{{ r.rule.priority }}</td>
+        <td>{{ r.rule.name }}{% if r.rule.description %}<br><span class="muted">{{ r.rule.description }}</span>{% endif %}</td>
+        <td>{% for k, v in (r.rule.match or {}).items() %}<code>{{ k }}={{ v }}</code> {% endfor %}</td>
+        <td>
+          {{ r.window_text }}
+          {% if r.open_now %}<span class="pill sent">đang mở</span>
+          {% else %}<span class="tag none">ngoài giờ</span>{% endif %}
+        </td>
+        <td class="mono">
+          {% if r.rule.action == 'set' %}đặt = {{ r.rule.value }}
+          {% elif r.rule.value.startswith('-') %}hạ {{ r.rule.value[1:] }} bậc
+          {% else %}nâng {{ r.rule.value }} bậc{% endif %}
+        </td>
+        <td>{% if r.rule.enabled %}<span class="pill sent">bật</span>{% else %}<span class="tag none">tắt</span>{% endif %}</td>
+        <td>
+          {% if r.winner %}<span class="pill firing">đang áp</span>
+          {% elif r.matches %}<span class="muted">khớp, ngoài giờ</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>
+          {% if can_edit %}
+          <form method="post" action="/labels/severity/toggle" style="display:inline">
+            <input type="hidden" name="id" value="{{ r.rule.id }}">
+            <button class="secondary small" type="submit">{{ 'Tắt' if r.rule.enabled else 'Bật' }}</button>
+          </form>
+          <form method="post" action="/labels/severity/delete" style="display:inline">
+            <input type="hidden" name="id" value="{{ r.rule.id }}">
+            <button class="danger small" type="submit" onclick="return confirm('Xoá rule này?')">Xoá</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">
+        Chưa có rule nào — mọi alert dùng đúng severity Alertmanager gửi.
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if can_edit and not rules %}
+  <form method="post" action="/labels/severity/baseline" style="margin-top:12px">
+    <button type="submit">Tạo baseline giờ giao dịch (T2–T6, 09:00–15:00)</button>
+    <span class="muted small">Tạo ra một rule bình thường — sửa hoặc xoá được như mọi rule khác.</span>
+  </form>
+  {% endif %}
+</section>
+
+{% if can_edit %}
+<section class="card">
+  <h2>Rule mới</h2>
+  <form method="post" action="/labels/severity/new">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <label>Tên<br><input name="name" required placeholder="Giờ giao dịch"></label>
+      <label>Ưu tiên (nhỏ thắng)<br><input type="number" name="priority" value="100" style="width:110px"></label>
+      <label>Hành động<br>
+        <select name="action" id="sevAction">
+          <option value="bump">Nâng / hạ bậc</option>
+          <option value="set">Đặt thành mức cố định</option>
+        </select>
+      </label>
+      <label>Giá trị<br>
+        <input name="value" id="sevValue" value="1" style="width:110px"
+               list="sevValues" placeholder="1 hoặc -1">
+      </label>
+      <label style="flex:1;min-width:200px">Mô tả<br><input name="description" placeholder="vì sao có rule này" style="width:100%"></label>
+    </div>
+    <datalist id="sevValues">
+      {% for b in bands %}<option value="{{ b }}">{% endfor %}
+    </datalist>
+    <p class="hint">
+      <code>1</code> = nâng một bậc, <code>-1</code> = hạ một bậc. Không bao giờ
+      vượt quá CRITICAL, và <b>không bao giờ xuống dưới INFO</b>.
+    </p>
+
+    <p class="muted small" style="margin:12px 0 4px"><b>Khung giờ</b> — để trống là áp mọi lúc.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      {% for num, label in weekdays %}
+      <label style="font-weight:400"><input type="checkbox" name="days" value="{{ num }}"
+        {{ 'checked' if num <= 5 }}> {{ label }}</label>
+      {% endfor %}
+      <label>Từ<br><input type="time" name="window_from" value="09:00"></label>
+      <label>Đến<br><input type="time" name="window_to" value="15:00"></label>
+    </div>
+    <p class="hint">
+      Khung vắt qua nửa đêm viết bình thường (<code>22:00</code> → <code>06:00</code>).
+      Giờ đọc theo <code>{{ tz_name }}</code>.
+    </p>
+
+    <p class="muted small" style="margin:12px 0 4px">
+      <b>Điều kiện — phải khớp tất cả.</b> Giá trị nhận wildcard
+      <code>*</code>. Dùng <code>severity=*</code> để áp cho mọi alert.
+    </p>
+    <div id="conds">
+      <div class="cond" style="display:flex;gap:8px;margin-bottom:6px">
+        <input name="match_key" placeholder="khoá, ví dụ tier" list="ctxkeys" style="flex:1" value="severity">
+        <input name="match_value" placeholder="giá trị, ví dụ 1" style="flex:1" value="*">
+        <button type="button" class="secondary" onclick="this.parentNode.remove()">×</button>
+      </div>
+    </div>
+    <datalist id="ctxkeys">
+      {% for k in context.keys() %}<option value="{{ k }}">{% endfor %}
+    </datalist>
+    <button type="button" class="secondary" id="addCond">+ Thêm điều kiện</button>
+    <button type="submit">Tạo rule</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Giới hạn đã biết</h2>
+  <p class="muted">
+    <b>Ngày lễ tính như ngày thường.</b> Rule "T2–T6 09:00–15:00" sẽ nâng
+    severity cả 2/9 và Tết, vì chưa có lịch nghỉ. Khoảng 10 ngày mỗi năm sẽ
+    sai — đúng vào những ngày ít người trực nhất. Nếu cần, bước tiếp theo là
+    một bảng ngày nghỉ và cờ bỏ qua ngày lễ trong khung giờ.
+  </p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('addCond')?.addEventListener('click', function () {
+    var row = document.querySelector('#conds .cond').cloneNode(true);
+    row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+    row.querySelector('button').onclick = function () { row.remove(); };
+    document.getElementById('conds').appendChild(row);
+  });
+</script>
+{% endblock %}

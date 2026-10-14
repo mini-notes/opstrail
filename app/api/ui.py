@@ -34,7 +34,11 @@ router = APIRouter(tags=["ui"], include_in_schema=False)
 ALERT_SORTS = SortSpec(
     columns={
         "started": Alert.starts_at,
-        "severity": severity_rank(Alert.severity),
+        # On what the alert is being treated as, not what it arrived as:
+        # an operator sorting by severity wants the order they are paged in.
+        "severity": severity_rank(
+            func.coalesce(Alert.effective_severity, Alert.severity)
+        ),
         "alert": Alert.alertname,
         "status": Alert.status,
         # NULL while an alert is still firing; nullslast() keeps those out of
@@ -62,7 +66,11 @@ DELIVERY_SORTS = SortSpec(
         "http": Notification.response_status,
         "duration": Notification.duration_ms,
         "alert": Alert.alertname,
-        "severity": severity_rank(Alert.severity),
+        # On what the alert is being treated as, not what it arrived as:
+        # an operator sorting by severity wants the order they are paged in.
+        "severity": severity_rank(
+            func.coalesce(Alert.effective_severity, Alert.severity)
+        ),
     },
     default="created",
     tiebreaker=Notification.id,
@@ -184,7 +192,10 @@ def _filtered_query(
     if team_id:
         stmt = stmt.where(Alert.team_id == team_id)
     if severity:
-        stmt = stmt.where(func.lower(Alert.severity) == severity.lower())
+        stmt = stmt.where(
+            func.lower(func.coalesce(Alert.effective_severity, Alert.severity))
+            == severity.lower()
+        )
     if alert_status:
         stmt = stmt.where(Alert.status == alert_status)
     if label_source == "none":

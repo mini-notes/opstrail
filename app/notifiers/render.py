@@ -21,6 +21,7 @@ from urllib.parse import quote
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 from app.models import Alert
+from app.services import severity as severity_mod
 
 log = logging.getLogger(__name__)
 
@@ -47,22 +48,8 @@ _env = Environment(
 # unrecognised is passed through upper-cased rather than silently relabelled,
 # because guessing wrong about how bad something is, is worse than admitting
 # we do not know.
-_SEVERITY_ALIASES = {
-    # worst: wakes someone up
-    "critical": "CRITICAL", "crit": "CRITICAL", "fatal": "CRITICAL",
-    "emerg": "CRITICAL", "emergency": "CRITICAL", "disaster": "CRITICAL",
-    "p1": "CRITICAL", "sev1": "CRITICAL",
-    # broken, but not necessarily out of hours
-    "error": "ERROR", "err": "ERROR", "major": "ERROR", "high": "ERROR",
-    "p2": "ERROR", "sev2": "ERROR",
-    # needs attention this shift
-    "warning": "WARNING", "warn": "WARNING", "minor": "WARNING",
-    "medium": "WARNING", "p3": "WARNING", "sev3": "WARNING",
-    # informational
-    "info": "INFO", "information": "INFO", "informational": "INFO",
-    "notice": "INFO", "low": "INFO", "debug": "INFO",
-    "p4": "INFO", "sev4": "INFO",
-}
+# Banding moved to app/services/severity.py so the card, the mention
+# threshold and the SQL sort order cannot disagree again.
 
 # Traffic-light colours: the convention a reader already knows, so the band is
 # legible before the word is read. Teams renders these inline in the FactSet.
@@ -100,7 +87,7 @@ def band_severity(raw: str | None) -> str:
     """Map a free-form severity label onto one of four bands."""
     if not raw:
         return "INFO"
-    return _SEVERITY_ALIASES.get(raw.strip().lower(), raw.strip().upper())
+    return severity_mod.band(raw)
 
 
 def _lookup(alert: Alert, keys: tuple[str, ...]) -> str | None:
@@ -202,7 +189,10 @@ CONTEXT_VARS: tuple[tuple[str, str], ...] = (
               "labels, annotations, starts_at, ends_at…"),
     ("service", "Tên hiển thị của service. Rỗng nếu alert chưa gán nhãn"),
     ("team", "Tên hiển thị của team. Rỗng nếu alert chưa gán nhãn"),
-    ("severity", "Đã chuẩn hoá: CRITICAL / ERROR / WARNING / INFO"),
+    ("severity", "Đã chuẩn hoá: CRITICAL / ERROR / WARNING / INFO. Là mức "
+                 "**sau** khi severity rule điều chỉnh, nếu có"),
+    ("severity_source", "Mức gốc Alertmanager gửi, **chỉ** có khi rule đã đổi "
+                        "nó. None nghĩa là không ai đụng tới"),
     ("status", "FIRING hoặc RESOLVED"),
     ("icon", "Emoji theo severity"),
     ("status_icon", "Emoji theo trạng thái"),
@@ -235,13 +225,17 @@ def build_context(
     """Everything a template may reference. One place, so the editor's preview
     and the real send see identical variables."""
     status = "RESOLVED" if alert.status.value == "resolved" else "FIRING"
-    severity = band_severity(alert.severity)
+    severity = band_severity(alert.acting_severity)
+    source_severity = band_severity(alert.severity)
     annotations = alert.annotations or {}
     return {
         "alert": alert,
         "service": service_name,
         "team": team_name,
         "severity": severity,
+        # Only set when a rule moved it. Whoever is woken at 3am is entitled
+        # to know that the decision was OpsTrail's and not Prometheus's.
+        "severity_source": source_severity if alert.effective_severity else None,
         "status": status,
         "icon": _SEVERITY_ICONS.get(severity, ""),
         "status_icon": _STATUS_ICONS[status],

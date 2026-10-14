@@ -16,6 +16,7 @@ Toàn bộ biến môi trường và cách cắm MS Teams.
 | `ALERT_RETENTION_MONTHS` | `6` | `0` = tắt purge |
 | `NOTIFICATION_RETENTION_MONTHS` | `3` | Lịch sử gửi. Chỉ có tác dụng khi **ngắn hơn** `ALERT_RETENTION_MONTHS` — xoá alert là các dòng gửi đi theo bằng CASCADE. Đặt bằng hoặc dài hơn thì cảnh báo lúc khởi động |
 | `RETENTION_HOUR_UTC` | `3` | |
+| `BUSINESS_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ **của sàn**, dùng để đọc khung giờ trong severity rule. **Không phải** múi giờ hiển thị — cái đó theo máy từng người. Tên zone sai thì cảnh báo và rơi về UTC |
 
 > Mọi mốc thời gian lưu trong DB là **UTC**. Múi giờ chỉ áp ở lớp hiển thị
 > và ở ranh giới bucket biểu đồ — xem [ui.md](ui.md#múi-giờ).

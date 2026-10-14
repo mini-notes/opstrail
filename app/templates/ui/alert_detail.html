@@ -5,7 +5,12 @@
 <p><a href="/alerts">← Alerts</a></p>
 
 <h1>
-  <span class="sev sev-{{ (alert.severity or 'unknown')|lower }}">{{ alert.severity or '—' }}</span>
+  <span class="sev sev-{{ (alert.acting_severity or 'unknown')|lower }}">{{ alert.acting_severity or '—' }}</span>
+  {%- if alert.effective_severity %}
+  <span class="tag none" title="Severity rule đã điều chỉnh mức này">
+    nguồn: {{ alert.severity or '—' }}
+  </span>
+  {%- endif %}
   {{ alert.alertname or 'Unnamed alert' }}
   <span class="pill {{ alert.status.value }}">{{ alert.status.value }}</span>
 </h1>

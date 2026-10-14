@@ -141,6 +141,7 @@ def build_shots(page) -> list[dict]:
         shot("dashboard-light", "/dashboard", 2400),
         shot("dashboard-dark", "/dashboard", 1150, theme="dark"),
         shot("label-rules", "/labels/rules", 1000),
+        shot("severity-rules", "/labels/severity", 1800),
         shot("services", "/labels/services", 900),
         shot("teams", "/labels/teams", 800),
         shot("owners", "/labels/owners", 800),

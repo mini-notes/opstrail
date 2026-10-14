@@ -18,9 +18,9 @@ from sqlalchemy import and_, case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Alert, AlertStatus, LabelSource
+from app.models import Alert, AlertStatus, LabelSource, Service, Team
 from app.schemas.alertmanager import AlertmanagerPayload
-from app.services import audit, labeling
+from app.services import audit, labeling, severity_rules
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +38,41 @@ class IngestResult:
 
     alert_ids: list[int]
     notify_ids: list[int]
+
+
+async def _effective_severity(session, am_alert, labels, attribution, rules):
+    """What severity_rules make of this alert, or None.
+
+    Returns None without touching the database when there are no rules --
+    which is the common case and the one the invariant depends on.
+    """
+    if not rules:
+        return None
+    try:
+        service = (
+            await session.get(Service, attribution.service_id)
+            if attribution.service_id else None
+        )
+        team = (
+            await session.get(Team, attribution.team_id)
+            if attribution.team_id else None
+        )
+        # A detached stand-in: the row does not exist yet, and the rules only
+        # read labels, severity and status.
+        probe = Alert(
+            fingerprint=am_alert.fingerprint,
+            starts_at=am_alert.startsAt,
+            status=AlertStatus(am_alert.status),
+            severity=labels.get("severity"),
+            labels=labels,
+        )
+        result, _rule = severity_rules.evaluate_against(
+            probe, rules, service=service, team=team
+        )
+        return result
+    except Exception:  # noqa: BLE001 - severity is an enhancement; intake is not
+        log.exception("severity evaluation failed during intake")
+        return None
 
 
 async def _record_attribution_change(
@@ -90,6 +125,11 @@ async def ingest_payload(
     alert_ids: list[int] = []
     notify_ids: list[int] = []
 
+    # Loaded once for the whole payload, and not at all when nobody has
+    # written any. An install with no severity rules must not pay a query
+    # per alert for a feature it does not use.
+    sev_rules = await severity_rules.active_rules(session)
+
     for am_alert in payload.alerts:
         labels = payload.effective_labels(am_alert)
         annotations = payload.effective_annotations(am_alert)
@@ -116,6 +156,9 @@ async def ingest_payload(
         ).one_or_none()
         previous_status = previous.status if previous else None
 
+        effective = await _effective_severity(session, am_alert, labels,
+                                              attribution, sev_rules)
+
         stmt = pg_insert(Alert).values(
             fingerprint=am_alert.fingerprint,
             starts_at=am_alert.startsAt,
@@ -134,6 +177,7 @@ async def ingest_payload(
             service_id=attribution.service_id,
             team_id=attribution.team_id,
             label_source=attribution.source,
+            effective_severity=effective,
         )
 
         # A manual tag is a patch applied while the source could not say who
@@ -172,6 +216,10 @@ async def ingest_payload(
                 "label_source": case(
                     (keep_manual, Alert.label_source), else_=stmt.excluded.label_source
                 ),
+                # Recomputed on every repeat, like the other derived fields:
+                # a rule added since the alert arrived should take hold, and
+                # one deleted should let go.
+                "effective_severity": stmt.excluded.effective_severity,
                 "updated_at": func.now(),
             },
         ).returning(Alert.id)

@@ -16,7 +16,10 @@
   {% for a in alerts %}
     <tr onclick="location='/alerts/{{ a.id }}'">
       <td><span class="pill {{ a.status.value }}">{{ a.status.value }}</span></td>
-      <td><span class="sev sev-{{ (a.severity or 'unknown')|lower }}">{{ a.severity or '—' }}</span></td>
+      <td>
+        <span class="sev sev-{{ (a.acting_severity or 'unknown')|lower }}">{{ a.acting_severity or '—' }}</span>
+        {%- if a.effective_severity %}<br><span class="muted small" title="Mức gốc Alertmanager gửi">↑ {{ a.severity }}</span>{% endif %}
+      </td>
       <td class="name">{{ a.alertname or '—' }}<br><span class="muted">{{ a.summary or '' }}</span></td>
       <td>{{ a.service.key if a.service else '—' }}</td>
       <td>{{ a.team.key if a.team else '—' }}</td>

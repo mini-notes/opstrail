@@ -151,6 +151,73 @@ Nhãn tự động (`payload`/`rule`) được làm mới ở **mọi** lần l�
 rule sẽ gán nhãn hồi tố cho alert đang được gửi lại — và xoá một rule cũng sẽ
 gỡ nhãn của chúng.
 
+## Severity theo ngữ cảnh
+
+Quản lý tại **Labels → Severity**.
+
+![Trang Severity](images/severity-rules.png)
+ Một sự cố thanh toán lúc 10 giờ sáng thứ Ba
+và cùng sự cố đó lúc 2 giờ sáng Chủ nhật không đáng được đối xử như nhau,
+nhưng Prometheus chỉ biết một `severity` cố định.
+
+**Nhãn gốc không bao giờ bị sửa.** Rule ghi vào cột riêng
+`effective_severity`; `severity` giữ nguyên đúng thứ Alertmanager gửi, nên vẫn
+đối chiếu được với Prometheus.
+
+| | |
+|---|---|
+| `severity` | Nhãn gốc. Bảng *Severity* trên dashboard đếm theo cột này |
+| `effective_severity` | Mức sau điều chỉnh. NULL = **không rule nào áp** — khác với "rule chạy rồi và trùng với nguồn" |
+
+Mức đã điều chỉnh quyết định **gọi ai** (ngưỡng mention), hiện trên card, và
+là mức dùng để lọc/sắp xếp bảng Alerts.
+
+### Hai lằn ranh cứng trong code
+
+- **Hạ mức không bao giờ chặn alert.** Nó chỉ đổi người được mention — alert
+  vẫn lưu, vẫn gửi tới channel. Thiếu điều này thì "giảm nhiễu ngoài giờ" âm
+  thầm thành "mất alert ngoài giờ", đúng lúc ít người trực nhất.
+- **Không bao giờ xuống dưới INFO, không bao giờ lên trên CRITICAL** — kể cả
+  khi rule ghi `-9`.
+
+### Khung giờ
+
+```json
+{"days": [1,2,3,4,5], "from": "09:00", "to": "15:00"}
+```
+
+Thứ theo ISO, 1 = T2. Để trống là áp mọi lúc. Khung vắt qua nửa đêm
+(`22:00` → `06:00`) được hiểu là **một** khung, không phải khung rỗng.
+
+> Giờ đọc theo `BUSINESS_TIMEZONE` — múi giờ của **sàn**, không phải múi giờ
+> hiển thị theo máy từng người ở menu tài khoản. Phiên giao dịch không đổi
+> theo chỗ ngồi của người đang xem.
+
+### Alert nổ trước phiên
+
+Một sweeper chạy **mỗi phút** tính lại mọi alert đang firing. Thiếu nó, alert
+nổ lúc 08:45 chỉ được xét lại khi Alertmanager gửi lại — mà `repeat_interval`
+thường 1–4 giờ, nên thực tế là biết tin lúc 11:00.
+
+Chỉ **nâng** mức mới gửi thông báo, và chỉ khi vượt ngưỡng mention. Hạ mức thì
+cập nhật im lặng: không ai muốn bị ping để báo rằng mọi thứ nhẹ đi.
+
+Mỗi lần OpsTrail tự đổi đều ghi audit `alert.severity.overridden` với
+`user_id` rỗng, kèm tên rule và khung giờ.
+
+### ⚠️ Ngày lễ tính như ngày thường
+
+Rule "T2–T6 09:00–15:00" sẽ nâng severity cả 2/9 và Tết. Khoảng 10 ngày mỗi
+năm sẽ sai, đúng vào những ngày ít người trực nhất. Bước tiếp theo nếu cần là
+một bảng ngày nghỉ và cờ bỏ qua ngày lễ trong khung giờ.
+
+### ⚠️ Template đã lưu không tự nhận tính năng mới
+
+Card hiện dòng *"Mức do OpsTrail điều chỉnh — nguồn gửi: …"* là do **template
+built-in**. Template bạn đã lưu trong DB giữ nguyên nội dung lúc lưu, nên
+không có dòng đó. Bấm **Về built-in** ở trang Template để đồng bộ, hoặc tự
+thêm biến `severity_source`.
+
 ## Sửa label ở nguồn Alertmanager thì sao?
 
 Câu trả lời ít ai đoán đúng: **không sửa dòng cũ, mà sinh dòng mới.**

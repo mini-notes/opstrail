@@ -21,35 +21,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import Alert, Owner, Service, ServiceOwner, Team, TeamOwner
+from app.services import severity
 
 log = logging.getLogger(__name__)
 
-# Lower number = more severe. Mirrors app/api/sorting.py:severity_rank so the
-# table ordering and the mention threshold agree on what "worse" means.
-SEVERITY_RANK = {
-    "critical": 1, "fatal": 1, "alarm": 1, "p1": 1,
-    "error": 2, "high": 2, "p2": 2,
-    "warning": 3, "warn": 3, "p3": 3,
-    "info": 4, "information": 4, "low": 4, "p4": 4,
-}
-UNKNOWN_RANK = 5
-
-
-def rank(severity: str | None) -> int:
-    if not severity:
-        return UNKNOWN_RANK
-    return SEVERITY_RANK.get(severity.strip().lower(), UNKNOWN_RANK)
-
-
-def meets_threshold(severity: str | None, threshold: str | None) -> bool:
-    """True when `severity` is at least as bad as `threshold`.
-
-    Compared by rank, never as strings: `"critical" >= "warning"` is False
-    alphabetically, which is the opposite of what an operator means.
-    """
-    if not threshold:
-        return False
-    return rank(severity) <= rank(threshold)
+# Severity comparison lives in app/services/severity.py. It used to live
+# here too, in a table that had drifted from the card's and the sort order's
+# -- `sev1` mentioned nobody while rendering as CRITICAL. Re-exported so the
+# call sites below read the same as before.
+rank = severity.rank
+meets_threshold = severity.meets_threshold
 
 
 @dataclass(slots=True)
@@ -131,7 +112,10 @@ async def plan_for(session: AsyncSession, alert: Alert) -> MentionPlan:
     if threshold is None:
         threshold = settings.mention_severity_default
 
-    should = bool(owners) and meets_threshold(alert.severity, threshold)
+    # The adjusted severity, not the one Alertmanager sent: raising an
+    # alert during the trading session is only worth anything if it changes
+    # who gets called.
+    should = bool(owners) and meets_threshold(alert.acting_severity, threshold)
     return MentionPlan(
         owners=owners, threshold=threshold, should_mention=should, source=source
     )

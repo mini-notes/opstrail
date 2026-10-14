@@ -15,6 +15,11 @@ dependencies = [
     "jinja2>=3.1",
     "httpx>=0.28",
     "apscheduler>=3.10",
+    # The zone severity_rules windows are read in comes from ZoneInfo, which
+    # reads /usr/share/zoneinfo. python:3.13-slim happens to ship it today;
+    # depending on that is a runtime failure deep inside rule evaluation the
+    # day a slimmer base image does not. ~500KB to not care.
+    "tzdata>=2024.2",
     # bcrypt directly, NOT passlib: passlib 1.7.4 (last released 2020) breaks
     # outright against bcrypt 5.x -- it reads bcrypt.__about__, which no longer
     # exists, then raises on every hash. See app/security.py.

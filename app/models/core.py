@@ -126,6 +126,47 @@ class LabelRule(Base):
     )
 
 
+class SeverityRule(Base):
+    """Adjust an alert's severity by context -- in practice, by the clock.
+
+    A payments outage at 10am on a Tuesday and the same outage at 2am on a
+    Sunday do not deserve the same treatment, but Prometheus only knows one
+    severity. These rules say "during the trading session, raise this a
+    band", and the result lands in `alerts.effective_severity`.
+
+    Mirrors `template_rules` and `label_rules` -- same `match` shape, same
+    globs, same "lowest priority number wins" -- so this is the third table
+    an operator meets and the first two already taught them the syntax.
+    """
+
+    __tablename__ = "severity_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    priority: Mapped[int] = mapped_column(
+        Integer, default=100, server_default="100", index=True
+    )
+    # Same keys as template rules: the alert's labels plus what OpsTrail
+    # derived (service, team, tier, status). An empty dict matches nothing,
+    # on purpose -- a half-filled form must not claim every alert.
+    match: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # {"days": [1..7], "from": "09:00", "to": "15:00"} -- ISO weekdays, 1 is
+    # Monday. Empty means "whenever". Interpreted in BUSINESS_TIMEZONE, which
+    # is the exchange's zone and NOT the viewer's display preference.
+    time_window: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # "set" (value is a band) or "bump" (value is bands MORE severe; a
+    # negative number quiets).
+    action: Mapped[str] = mapped_column(String(16), default="bump")
+    value: Mapped[str] = mapped_column(String(32))
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class Incident(Base):
     """Phase 2 groups alerts into incidents; the table exists from Phase 1 so
     that `alerts.incident_id` is a real FK from day one.
@@ -370,6 +411,27 @@ class Alert(Base):
     # --- content ---
     alertname: Mapped[str | None] = mapped_column(String(255), index=True)
     severity: Mapped[str | None] = mapped_column(String(32), index=True)
+    # What severity_rules decided this alert is worth RIGHT NOW. NULL means
+    # no rule applied, which is deliberately distinct from "a rule ran and
+    # agreed with the source" -- those answer differently when someone asks
+    # whether their rule is working at all.
+    #
+    # `severity` above stays exactly as Alertmanager sent it. Overwriting it
+    # would be OpsTrail editing the system of record, and the UPSERT would
+    # refresh it away on the next repeat anyway.
+    effective_severity: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+
+    @property
+    def acting_severity(self) -> str | None:
+        """The severity everything downstream should act on.
+
+        One accessor so the mention threshold, the card and the alert table
+        cannot end up reading different fields -- which is exactly how the
+        three severity tables drifted before they were merged.
+        """
+        return self.effective_severity or self.severity
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     labels: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")

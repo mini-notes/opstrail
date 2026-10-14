@@ -16,7 +16,7 @@ Two things go wrong with table sorting and both are silent:
 
 from dataclasses import dataclass
 
-from sqlalchemy import case
+from app.services import severity
 
 ASC = "asc"
 DESC = "desc"
@@ -82,13 +82,10 @@ def severity_rank(column):
 
     Alphabetical puts `critical` below `warning`, which is useless to whoever
     is on call. Unknown values sort last rather than being dropped.
+
+    The CASE is built from app/services/severity.py, not written out here.
+    The hand-written copy this replaces knew six spellings out of
+    twenty-eight, so `p1` sorted below `info` while the card called it
+    CRITICAL.
     """
-    return case(
-        (column.ilike("critical"), 1),
-        (column.ilike("fatal"), 1),
-        (column.ilike("error"), 2),
-        (column.ilike("warning"), 3),
-        (column.ilike("warn"), 3),
-        (column.ilike("info"), 4),
-        else_=5,
-    )
+    return severity.sql_rank(column)
