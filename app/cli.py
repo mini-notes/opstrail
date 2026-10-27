@@ -68,9 +68,7 @@ async def set_password(username: str) -> None:
 
 async def list_users() -> None:
     async with SessionLocal() as session:
-        users = (
-            (await session.execute(select(User).order_by(User.username))).scalars().all()
-        )
+        users = (await session.execute(select(User).order_by(User.username))).scalars().all()
     if not users:
         print("no users yet -- create one with: python -m app.cli create-user ...")
         return
@@ -85,9 +83,7 @@ def main() -> None:
 
     create = sub.add_parser("create-user", help="create a user (password prompted)")
     create.add_argument("--username", required=True)
-    create.add_argument(
-        "--role", default="viewer", choices=[r.value for r in UserRole]
-    )
+    create.add_argument("--role", default="viewer", choices=[r.value for r in UserRole])
     create.add_argument("--email")
     create.add_argument("--upn", help="Entra ID UPN; used by Phase 2 Teams mentions")
 
@@ -95,12 +91,23 @@ def main() -> None:
     pwd.add_argument("--username", required=True)
 
     sub.add_parser("list-users", help="list users")
+    retry = sub.add_parser(
+        "requeue-delivery", help="retry a failed delivery after fixing its cause"
+    )
+    retry.add_argument("--id", type=int, required=True)
 
     args = parser.parse_args()
     if args.command == "create-user":
         asyncio.run(create_user(args.username, args.role, args.email, args.upn))
     elif args.command == "set-password":
         asyncio.run(set_password(args.username))
+    elif args.command == "requeue-delivery":
+        from app.services.dispatch import requeue_failed
+
+        try:
+            asyncio.run(requeue_failed(args.id))
+        except ValueError as exc:
+            parser.error(str(exc))
     else:
         asyncio.run(list_users())
 

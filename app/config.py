@@ -19,13 +19,20 @@ class Settings(BaseSettings):
     # --- app ---
     app_name: str = "OpsTrail"
     debug: bool = False
+    environment: str = "development"
+    run_background_tasks: bool = True
+    dispatch_lease_seconds: int = 120
+    dispatch_concurrency: int = 8
+    dispatch_target_interval_seconds: float = 1.0
+    backlog_digest_after_seconds: int = 300
+    backlog_digest_max_events: int = 100
+    backlog_retention_hours: int = 168
+    ops_metrics_token: str = ""
     public_host: str = "http://localhost:8000"
 
     # --- database ---
     # asyncpg driver; alembic rewrites this to psycopg for sync migrations.
-    database_url: str = (
-        "postgresql+asyncpg://opstrail:opstrail@localhost:5432/opstrail"
-    )
+    database_url: str = "postgresql+asyncpg://opstrail:opstrail@localhost:5432/opstrail"
 
     # --- intake auth ---
     # Alertmanager sends this as `Authorization: Bearer <token>`
@@ -46,7 +53,7 @@ class Settings(BaseSettings):
     # Which identifier goes into an Adaptive Card mention. Teams tenants
     # differ: some resolve the UPN/email, others only the AAD object id. If a
     # card shows the right name but does not notify the person, switch this.
-    msteams_mention_id_field: str = "upn"   # upn | aad
+    msteams_mention_id_field: str = "upn"  # upn | aad
 
     # --- authenticating the call to Power Automate ---
     # The trigger URL alone is a bearer credential: whoever has it can post
@@ -78,10 +85,8 @@ class Settings(BaseSettings):
     def entra_token_endpoint(self) -> str:
         if self.entra_token_url:
             return self.entra_token_url
-        return (
-            f"https://login.microsoftonline.com/{self.entra_tenant_id}"
-            "/oauth2/v2.0/token"
-        )
+        return f"https://login.microsoftonline.com/{self.entra_tenant_id}/oauth2/v2.0/token"
+
     # Mention owners from this severity upwards, when a service or team has
     # not set its own threshold.
     mention_severity_default: str = "critical"
@@ -124,6 +129,65 @@ class Settings(BaseSettings):
     # window -- ON DELETE CASCADE gets there first otherwise.
     notification_retention_months: int = 3
     retention_hour_utc: int = 3  # daily purge time
+
+    def validate_runtime(self) -> None:
+        if not 1 <= self.dispatch_concurrency <= 32:
+            raise ValueError("DISPATCH_CONCURRENCY must be 1..32")
+        if self.dispatch_timeout_seconds <= 0 or self.dispatch_lease_seconds < (
+            self.dispatch_timeout_seconds * 4 + 10
+        ):
+            raise ValueError("dispatch lease must exceed four HTTP timeouts plus 10 seconds")
+        if not 1 <= self.backlog_digest_max_events <= 100:
+            raise ValueError("BACKLOG_DIGEST_MAX_EVENTS must be 1..100")
+        if self.backlog_retention_hours <= 0 or self.backlog_digest_after_seconds < 0:
+            raise ValueError("invalid backlog windows")
+        if self.dispatch_target_interval_seconds < 0:
+            raise ValueError("target interval must be nonnegative")
+        if self.environment not in ("development", "test", "production"):
+            raise ValueError("ENVIRONMENT must be development, test or production")
+        if self.environment == "production":
+            if any(
+                value.startswith("REPLACE")
+                for value in (
+                    self.session_secret,
+                    self.intake_token,
+                    self.ops_metrics_token,
+                )
+            ):
+                raise ValueError("replace all example secrets before production startup")
+            if self.msteams_enabled and not self.msteams_power_automate_url:
+                raise ValueError("enabled Teams delivery requires a default target URL")
+            if self.outbound_webhook_enabled and not self.outbound_webhook_url:
+                raise ValueError("enabled outbound webhook requires a URL")
+            if len(self.ops_metrics_token) < 32:
+                raise ValueError("production requires a private OPS_METRICS_TOKEN")
+            if len(self.session_secret) < 32 or self.session_secret in {
+                "change-me-in-production",
+                "dev-session-secret-change-me",
+                "change-me-32-chars-min",
+            }:
+                raise ValueError(
+                    "production requires a private SESSION_SECRET of at least 32 chars"
+                )
+            if len(self.intake_token) < 32 or self.intake_token in {
+                "dev-intake-token",
+                "change-me",
+            }:
+                raise ValueError("production requires a private INTAKE_TOKEN of at least 32 chars")
+            if not self.public_host.startswith("https://"):
+                raise ValueError("production PUBLIC_HOST must use HTTPS")
+            if self.msteams_auth not in ("none", "bearer", "entra"):
+                raise ValueError("unknown Teams auth mode")
+            if self.msteams_auth == "bearer" and not self.msteams_auth_token:
+                raise ValueError("bearer auth requires a token")
+            if self.msteams_auth == "entra" and not all(
+                (
+                    self.entra_client_id,
+                    self.entra_client_secret,
+                    self.entra_tenant_id,
+                )
+            ):
+                raise ValueError("Entra auth requires tenant and client credentials")
 
     @property
     def sync_database_url(self) -> str:

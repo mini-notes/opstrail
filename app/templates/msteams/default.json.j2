@@ -113,13 +113,13 @@
   ]
   {%- set acts = [] -%}
   {%- if not resolved -%}
-    {%- if runbook_url %}{% set _ = acts.append(("📖 Runbook", runbook_url)) %}{% endif -%}
-    {%- if dashboard_url %}{% set _ = acts.append(("📊 Dashboard", dashboard_url)) %}{% endif -%}
-    {%- if generator_url %}{% set _ = acts.append(("🔍 Prometheus", generator_url)) %}{% endif -%}
+    {%- if runbook_url %}{% set acts = acts + [("📖 Runbook", runbook_url)] %}{% endif -%}
+    {%- if dashboard_url %}{% set acts = acts + [("📊 Dashboard", dashboard_url)] %}{% endif -%}
+    {%- if generator_url %}{% set acts = acts + [("🔍 Prometheus", generator_url)] %}{% endif -%}
   {%- endif -%}
-  {%- if detail_url %}{% set _ = acts.append(("🗂 OpsTrail", detail_url)) %}{% endif -%}
+  {%- if detail_url %}{% set acts = acts + [("🗂 OpsTrail", detail_url)] %}{% endif -%}
   {#- Không còn gì để tắt khi alert đã hết. -#}
-  {%- if silence_url and not resolved %}{% set _ = acts.append(("🔕 Silence", silence_url)) %}{% endif -%}
+  {%- if silence_url and not resolved %}{% set acts = acts + [("🔕 Silence", silence_url)] %}{% endif -%}
   {%- if acts %},
   "actions": [
     {%- for title, url in acts %}

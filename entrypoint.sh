@@ -1,8 +1,6 @@
 #!/bin/sh
-# Run migrations before serving. Alembic is idempotent, so this is safe on
-# every start; with several replicas Postgres serialises the version table.
+# Development convenience. Production overrides command and runs the migrate
+# one-shot explicitly before starting API/worker containers.
 set -e
-echo "opstrail: running migrations..."
 alembic upgrade head
-echo "opstrail: starting api..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000

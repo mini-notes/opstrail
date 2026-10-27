@@ -278,13 +278,15 @@ async def reevaluate_once() -> int:
                     log.exception("mention check failed for alert %s", alert.id)
 
         if changed:
-            await session.commit()
+            await session.flush()
             log.info("severity: adjusted %d firing alert(s)", changed)
 
         if escalated:
             await dispatch.queue_for_alerts(session, escalated)
             log.info("severity: escalated %d alert(s) past the mention "
                      "threshold", len(escalated))
+
+        await session.commit()
 
     return changed
 

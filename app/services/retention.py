@@ -59,9 +59,7 @@ async def purge_old_alerts(months: int | None = None) -> int:
             ids = (
                 (
                     await session.execute(
-                        select(Alert.id)
-                        .where(Alert.starts_at < cutoff)
-                        .limit(BATCH_SIZE)
+                        select(Alert.id).where(_alert_purgeable(cutoff)).limit(BATCH_SIZE)
                     )
                 )
                 .scalars()
@@ -69,16 +67,23 @@ async def purge_old_alerts(months: int | None = None) -> int:
             )
             if not ids:
                 break
-            await session.execute(delete(Alert).where(Alert.id.in_(ids)))
+            result = await session.execute(
+                delete(Alert).where(Alert.id.in_(ids), _alert_purgeable(cutoff))
+            )
             await session.commit()
-            removed += len(ids)
+            removed += result.rowcount
+            if not result.rowcount:
+                break
 
         remaining = (await session.execute(select(func.count(Alert.id)))).scalar_one()
 
     if removed:
         log.info(
             "retention: removed %d alert(s) older than %s (%d month(s)); %d remain",
-            removed, cutoff.date(), months, remaining,
+            removed,
+            cutoff.date(),
+            months,
+            remaining,
         )
     return removed
 
@@ -111,22 +116,19 @@ async def preview() -> dict:
     note_cut = cutoff_for(note_months) if note_months > 0 else None
 
     async with SessionLocal() as session:
+
         async def count(stmt):
             return (await session.execute(stmt)).scalar_one()
 
         alerts_total = await count(select(func.count(Alert.id)))
         notes_total = await count(select(func.count(Notification.id)))
         alerts_due = (
-            await count(
-                select(func.count(Alert.id)).where(Alert.starts_at < alert_cut)
-            )
+            await count(select(func.count(Alert.id)).where(_alert_purgeable(alert_cut)))
             if alert_cut
             else 0
         )
         notes_due = (
-            await count(
-                select(func.count(Notification.id)).where(_purgeable(note_cut))
-            )
+            await count(select(func.count(Notification.id)).where(_purgeable(note_cut)))
             if note_cut
             else 0
         )
@@ -155,28 +157,23 @@ async def preview() -> dict:
     }
 
 
-def _purgeable(cutoff: datetime):
-    """Delivery rows old enough to drop.
-
-    The `pending` carve-out is the point of this predicate. A pending row
-    whose next attempt is still in the future is an in-flight retry that the
-    dispatch sweeper has not reached yet; deleting it drops the delivery with
-    no record that anything was attempted.
-
-    A pending row whose next attempt has passed is a different thing: the
-    sweeper gives up on AGE after dispatch_give_up_after_minutes, so a row
-    months past its retry time is dead and nothing will ever pick it up. Those
-    are purged like any other finished row -- otherwise they accumulate for
-    ever, and the one state we refuse to delete becomes a leak.
-    """
+def _alert_purgeable(cutoff):
     return and_(
-        Notification.created_at < cutoff,
-        or_(
-            Notification.status != NotificationStatus.pending,
-            Notification.next_attempt_at.is_(None),
-            Notification.next_attempt_at <= func.now(),
-        ),
+        Alert.status == "resolved",
+        func.coalesce(Alert.ends_at, Alert.updated_at) < cutoff,
+        ~select(Notification.id)
+        .where(
+            Notification.alert_id == Alert.id,
+            Notification.status == NotificationStatus.pending,
+        )
+        .exists(),
     )
+
+
+def _purgeable(cutoff: datetime):
+    # Only the dispatcher can end a pending delivery. Retention must never
+    # infer that an overdue retry is dead and silently discard it.
+    return and_(Notification.created_at < cutoff, Notification.status != NotificationStatus.pending)
 
 
 async def purge_old_notifications(months: int | None = None) -> int:
@@ -195,9 +192,7 @@ async def purge_old_notifications(months: int | None = None) -> int:
             ids = (
                 (
                     await session.execute(
-                        select(Notification.id)
-                        .where(_purgeable(cutoff))
-                        .limit(BATCH_SIZE)
+                        select(Notification.id).where(_purgeable(cutoff)).limit(BATCH_SIZE)
                     )
                 )
                 .scalars()
@@ -210,9 +205,7 @@ async def purge_old_notifications(months: int | None = None) -> int:
             # it must be spared when that happens. rowcount rather than
             # len(ids) so the tally stays honest when it does.
             result = await session.execute(
-                delete(Notification).where(
-                    Notification.id.in_(ids), _purgeable(cutoff)
-                )
+                delete(Notification).where(Notification.id.in_(ids), _purgeable(cutoff))
             )
             await session.commit()
             if not result.rowcount:
@@ -238,11 +231,14 @@ async def purge_old_notifications(months: int | None = None) -> int:
         log.warning(
             "retention: kept %d pending notification(s) older than %s that are "
             "still awaiting a retry -- is the dispatch loop running?",
-            stuck, cutoff.date(),
+            stuck,
+            cutoff.date(),
         )
     if removed:
         log.info(
             "retention: removed %d delivery record(s) older than %s (%d month(s))",
-            removed, cutoff.date(), months,
+            removed,
+            cutoff.date(),
+            months,
         )
     return removed

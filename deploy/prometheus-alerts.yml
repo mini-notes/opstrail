@@ -1,0 +1,28 @@
+groups:
+  - name: opstrail
+    rules:
+      - alert: OpsTrailScrapeMissing
+        expr: up{job="opstrail"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: 'OpsTrail metrics unavailable'}
+      - alert: OpsTrailWorkerMissing
+        expr: time() - opstrail_worker_last_success_timestamp_seconds{job="dispatch"} > 60 or absent(opstrail_worker_last_success_timestamp_seconds{job="dispatch"})
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: 'OpsTrail dispatcher heartbeat missing'}
+      - alert: OpsTrailMaintenanceMissing
+        expr: time() - opstrail_worker_last_success_timestamp_seconds{job="maintenance"} > 180 or absent(opstrail_worker_last_success_timestamp_seconds{job="maintenance"})
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: 'OpsTrail maintenance has not completed'}
+      - alert: OpsTrailBacklog
+        expr: opstrail_pending_oldest_age_seconds > 120
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: 'OpsTrail notification backlog is growing'}
+      - alert: OpsTrailDeliveryFailed
+        expr: opstrail_deliveries{status="failed"} > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: 'OpsTrail has failed deliveries; inspect delivery history'}

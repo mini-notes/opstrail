@@ -1,0 +1,77 @@
+# Run separately from the demo stack: docker compose -f compose.production.yml ...
+x-runtime: &runtime
+  image: ${OPSTRAIL_IMAGE:-opstrail:local}
+  build: .
+  env_file: ${OPSTRAIL_ENV_FILE:-.env.production}
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+  mem_limit: 512m
+  cpus: 1.0
+  stop_grace_period: 40s
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: '5'}
+
+services:
+  migrate:
+    <<: *runtime
+    env_file: ${OPSTRAIL_MIGRATION_ENV_FILE:-.env.production}
+    restart: 'no'
+    command: [alembic, upgrade, head]
+    environment:
+      RUN_BACKGROUND_TASKS: 'false'
+
+  api:
+    <<: *runtime
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, '8000']
+    environment:
+      RUN_BACKGROUND_TASKS: 'false'
+    # Publish to loopback; put the existing internal TLS proxy in front.
+    ports: ['127.0.0.1:8000:8000']
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *runtime
+    command: [python, -m, app.worker]
+    environment:
+      RUN_BACKGROUND_TASKS: 'false'
+    healthcheck:
+      test: [CMD, python, -m, app.healthcheck]
+      interval: 20s
+      timeout: 6s
+      retries: 3
+      start_period: 30s
+
+  backup:
+    image: postgres:16-alpine
+    profiles: [backup]
+    env_file: ${OPSTRAIL_BACKUP_ENV_FILE:-.env.backup}
+    entrypoint: [/bin/sh, /scripts/backup-loop.sh]
+    volumes:
+      - ./deploy/backup.sh:/scripts/backup.sh:ro
+      - ./deploy/backup-loop.sh:/scripts/backup-loop.sh:ro
+      - ${OPSTRAIL_BACKUP_DIR:-./backups}:/backups
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, "test -n \"$$(find /backups -name '*.dump' -mmin -1500 -print -quit)\""]
+      interval: 5m
+      timeout: 10s
+      retries: 1
+      start_period: 5m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}

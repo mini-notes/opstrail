@@ -16,13 +16,13 @@ Alertmanager is a machine client. Configure it on the receiver:
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session
 from app.schemas.alertmanager import AlertmanagerPayload
-from app.services import dispatch, ingest
+from app.services import ingest
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/webhooks", tags=["intake"])
@@ -36,9 +36,7 @@ def require_intake_token(authorization: str | None = Header(default=None)) -> No
         return
     expected = f"Bearer {settings.intake_token}"
     if authorization != expected:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid intake token"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid intake token")
 
 
 @router.post(
@@ -48,7 +46,6 @@ def require_intake_token(authorization: str | None = Header(default=None)) -> No
 )
 async def receive_alertmanager(
     payload: AlertmanagerPayload,
-    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Persist first, notify after.
@@ -60,13 +57,11 @@ async def receive_alertmanager(
     if not payload.alerts:
         return {"received": 0, "queued": 0}
 
-    result = await ingest.ingest_payload(session, payload)
+    result = await ingest.ingest_payload(session, payload, commit=False)
     # Only new / state-changed alerts ring the bell; see IngestResult.
-    note_ids = await dispatch.queue_for_alerts(session, result.notify_ids)
+    note_ids = result.notification_ids
 
-    # Delivery happens after the response: a slow Power Automate flow must
-    # never make Alertmanager time out and re-send.
-    background.add_task(dispatch.dispatch_pending)
+    await session.commit()
 
     return {
         "received": len(result.alert_ids),

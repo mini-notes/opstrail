@@ -12,15 +12,16 @@ Contract with Alertmanager
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Alert, AlertStatus, LabelSource, Service, Team
 from app.schemas.alertmanager import AlertmanagerPayload
-from app.services import audit, labeling, severity_rules
+from app.services import audit, dispatch, labeling, severity_rules
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class IngestResult:
 
     alert_ids: list[int]
     notify_ids: list[int]
+    notification_ids: list[int] = field(default_factory=list)
 
 
 async def _effective_severity(session, am_alert, labels, attribution, rules):
@@ -50,13 +52,9 @@ async def _effective_severity(session, am_alert, labels, attribution, rules):
         return None
     try:
         service = (
-            await session.get(Service, attribution.service_id)
-            if attribution.service_id else None
+            await session.get(Service, attribution.service_id) if attribution.service_id else None
         )
-        team = (
-            await session.get(Team, attribution.team_id)
-            if attribution.team_id else None
-        )
+        team = await session.get(Team, attribution.team_id) if attribution.team_id else None
         # A detached stand-in: the row does not exist yet, and the rules only
         # read labels, severity and status.
         probe = Alert(
@@ -66,9 +64,7 @@ async def _effective_severity(session, am_alert, labels, attribution, rules):
             severity=labels.get("severity"),
             labels=labels,
         )
-        result, _rule = severity_rules.evaluate_against(
-            probe, rules, service=service, team=team
-        )
+        result, _rule = severity_rules.evaluate_against(probe, rules, service=service, team=team)
         return result
     except Exception:  # noqa: BLE001 - severity is an enhancement; intake is not
         log.exception("severity evaluation failed during intake")
@@ -85,8 +81,11 @@ async def _clear_ack(session: AsyncSession, alert_id: int) -> None:
     alert.acked_by_id = None
     try:
         await audit.record(
-            session, None, "alert.ack.cleared",
-            object_type="alert", object_id=alert_id,
+            session,
+            None,
+            "alert.ack.cleared",
+            object_type="alert",
+            object_id=alert_id,
             detail={"reason": "resolved -> firing", "was_acked_by": was},
         )
     except Exception:  # noqa: BLE001
@@ -123,8 +122,11 @@ async def _record_attribution_change(
 
     try:
         await audit.record(
-            session, None, action,
-            object_type="alert", object_id=alert_id,
+            session,
+            None,
+            action,
+            object_type="alert",
+            object_id=alert_id,
             detail={
                 "from": before.value if before else None,
                 "to": after.value if after else None,
@@ -137,16 +139,28 @@ async def _record_attribution_change(
 
 
 async def ingest_payload(
-    session: AsyncSession, payload: AlertmanagerPayload
+    session: AsyncSession, payload: AlertmanagerPayload, *, commit: bool = True
 ) -> IngestResult:
     """Persist every alert in the payload."""
     alert_ids: list[int] = []
     notify_ids: list[int] = []
+    notification_ids: list[int] = []
 
     # Loaded once for the whole payload, and not at all when nobody has
     # written any. An install with no severity rules must not pay a query
     # per alert for a feature it does not use.
     sev_rules = await severity_rules.active_rules(session)
+
+    # Serialize identities in a stable order, including first INSERTs. A row
+    # lock alone cannot lock an identity that does not exist yet.
+    identities = sorted(
+        {f"{a.fingerprint}:{a.startsAt.astimezone(UTC).isoformat()}" for a in payload.alerts}
+    )
+    for identity in identities:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
+            {"identity": identity},
+        )
 
     for am_alert in payload.alerts:
         labels = payload.effective_labels(am_alert)
@@ -175,8 +189,7 @@ async def ingest_payload(
         ).one_or_none()
         previous_status = previous.status if previous else None
 
-        effective = await _effective_severity(session, am_alert, labels,
-                                              attribution, sev_rules)
+        effective = await _effective_severity(session, am_alert, labels, attribution, sev_rules)
 
         stmt = pg_insert(Alert).values(
             fingerprint=am_alert.fingerprint,
@@ -226,12 +239,8 @@ async def ingest_payload(
                 "annotations": stmt.excluded.annotations,
                 "summary": stmt.excluded.summary,
                 "description": stmt.excluded.description,
-                "service_id": case(
-                    (keep_manual, Alert.service_id), else_=stmt.excluded.service_id
-                ),
-                "team_id": case(
-                    (keep_manual, Alert.team_id), else_=stmt.excluded.team_id
-                ),
+                "service_id": case((keep_manual, Alert.service_id), else_=stmt.excluded.service_id),
+                "team_id": case((keep_manual, Alert.team_id), else_=stmt.excluded.team_id),
                 "label_source": case(
                     (keep_manual, Alert.label_source), else_=stmt.excluded.label_source
                 ),
@@ -251,6 +260,7 @@ async def ingest_payload(
         new_status = AlertStatus(am_alert.status)
         if previous_status is None or previous_status != new_status:
             notify_ids.append(alert_id)
+            notification_ids.extend(await dispatch.queue_for_alerts(session, [alert_id]))
 
         # Broke again after being resolved: whoever said "I am on it" was
         # talking about an episode that ended, so the alert goes back on the
@@ -265,9 +275,16 @@ async def ingest_payload(
         ):
             await _clear_ack(session, alert_id)
 
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     log.info(
         "ingested %d alert(s) from receiver=%s (%d worth notifying)",
-        len(alert_ids), payload.receiver, len(notify_ids),
+        len(alert_ids),
+        payload.receiver,
+        len(notify_ids),
     )
-    return IngestResult(alert_ids=alert_ids, notify_ids=notify_ids)
+    return IngestResult(
+        alert_ids=alert_ids, notify_ids=notify_ids, notification_ids=notification_ids
+    )

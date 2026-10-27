@@ -551,6 +551,13 @@ class Notification(Base):
     channel: Mapped[NotificationChannel] = mapped_column(
         _enum(NotificationChannel, "notification_channel")
     )
+    # A rendered immutable event snapshot; retries do not read mutable Alert.
+    event_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    digest_parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    scope_team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    event_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    worker_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     target: Mapped[str] = mapped_column(Text)
     status: Mapped[NotificationStatus] = mapped_column(
         _enum(NotificationStatus, "notification_status"),
@@ -590,3 +597,20 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+class OutboundTarget(Base):
+    """Durable per-destination lease and rate limit, shared by all workers."""
+
+    __tablename__ = "outbound_targets"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    claim_token: Mapped[str | None] = mapped_column(String(36))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_send_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkerState(Base):
+    __tablename__ = "worker_state"
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    detail: Mapped[dict] = mapped_column(JSONB, default=dict)

@@ -1,0 +1,42 @@
+name: validate
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opstrail
+          POSTGRES_PASSWORD: opstrail
+          POSTGRES_DB: opstrail_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U opstrail -d opstrail_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://opstrail:opstrail@localhost:5432/opstrail_test
+      DATABASE_URL: postgresql+asyncpg://opstrail:opstrail@localhost:5432/opstrail_migration
+      REQUIRE_TEST_DATABASE: '1'
+      RUN_BACKGROUND_TASKS: 'false'
+      PGPASSWORD: opstrail
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13', cache: pip, cache-dependency-path: 'requirements*.lock'}
+      - run: pip install -r requirements-dev.lock && pip install --no-deps -e .
+      - run: ruff check app tests deploy/load_test.py
+      - run: pytest tests/ -q
+      - name: Migration upgrade, downgrade and schema drift
+        run: |
+          createdb -h localhost -U opstrail opstrail_migration
+          alembic upgrade head
+          alembic downgrade 06405e35c63f
+          alembic upgrade head
+          alembic check
+      - run: docker build -t opstrail:ci .
+      - name: Validate production Compose structure
+        run: |
+          cp .env.production.example .env.production
+          cp .env.backup.example .env.backup
+          docker compose -f compose.production.yml config --quiet

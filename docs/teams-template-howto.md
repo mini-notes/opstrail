@@ -195,9 +195,9 @@ Card gọn cho on-call. Copy vào trình soạn là chạy được.
   ],
   "actions": [
     {%- set buttons = [] %}
-    {%- if runbook_url %}{% set _ = buttons.append(("📖 Runbook", runbook_url)) %}{% endif %}
-    {%- if generator_url and status != "RESOLVED" %}{% set _ = buttons.append(("🔍 Prometheus", generator_url)) %}{% endif %}
-    {%- set _ = buttons.append(("🗂 OpsTrail", detail_url)) %}
+    {%- if runbook_url %}{% set buttons = buttons + [("📖 Runbook", runbook_url)] %}{% endif %}
+    {%- if generator_url and status != "RESOLVED" %}{% set buttons = buttons + [("🔍 Prometheus", generator_url)] %}{% endif %}
+    {%- set buttons = buttons + [("🗂 OpsTrail", detail_url)] %}
     {%- for title, url in buttons %}
     { "type": "Action.OpenUrl", "title": {{ title | tojson }}, "url": {{ url | tojson }} }
     {{- "," if not loop.last }}

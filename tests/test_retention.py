@@ -70,9 +70,14 @@ async def session(monkeypatch):
 async def _alert(session, fp: str, *, days_ago: float) -> Alert:
     started = datetime.now(UTC) - timedelta(days=days_ago)
     alert = Alert(
-        fingerprint=fp, starts_at=started, received_at=started,
-        status=AlertStatus.firing, alertname="X", severity="critical",
-        labels={}, annotations={},
+        fingerprint=fp,
+        starts_at=started,
+        received_at=started,
+        status=AlertStatus.firing,
+        alertname="X",
+        severity="critical",
+        labels={},
+        annotations={},
     )
     session.add(alert)
     await session.flush()
@@ -81,8 +86,10 @@ async def _alert(session, fp: str, *, days_ago: float) -> Alert:
 
 async def _note(session, alert, *, days_ago: float, status, next_attempt_at=None):
     note = Notification(
-        alert_id=alert.id, channel=NotificationChannel.msteams,
-        target="http://teams-mock:8080/teams", status=status,
+        alert_id=alert.id,
+        channel=NotificationChannel.msteams,
+        target="http://teams-mock:8080/teams",
+        status=status,
         created_at=datetime.now(UTC) - timedelta(days=days_ago),
         next_attempt_at=next_attempt_at,
     )
@@ -101,7 +108,10 @@ async def test_pending_retry_in_the_future_survives_however_old_it_is(session):
     yet; purging it loses the alert silently."""
     alert = await _alert(session, "fp-pending", days_ago=200)
     inflight = await _note(
-        session, alert, days_ago=180, status=NotificationStatus.pending,
+        session,
+        alert,
+        days_ago=180,
+        status=NotificationStatus.pending,
         next_attempt_at=datetime.now(UTC) + timedelta(minutes=10),
     )
     await session.commit()
@@ -113,27 +123,29 @@ async def test_pending_retry_in_the_future_survives_however_old_it_is(session):
 
 
 @pytest.mark.asyncio
-async def test_pending_whose_retry_is_overdue_is_purged(session):
-    """dispatch gives up on age after an hour, so a months-old pending row
-    whose next attempt is in the past is dead, not in flight."""
+async def test_pending_whose_retry_is_overdue_is_preserved(session):
+    """Only the dispatcher may mark a delivery terminal, even after an outage."""
     alert = await _alert(session, "fp-stuck", days_ago=200)
     await _note(
-        session, alert, days_ago=180, status=NotificationStatus.pending,
+        session,
+        alert,
+        days_ago=180,
+        status=NotificationStatus.pending,
         next_attempt_at=datetime.now(UTC) - timedelta(days=170),
     )
     await session.commit()
 
-    assert await retention.purge_old_notifications(months=3) == 1
-    assert await _surviving_ids(session) == set()
+    assert await retention.purge_old_notifications(months=3) == 0
+    assert len(await _surviving_ids(session)) == 1
 
 
 @pytest.mark.asyncio
-async def test_pending_with_no_next_attempt_is_purged(session):
+async def test_pending_with_no_next_attempt_is_preserved(session):
     alert = await _alert(session, "fp-null", days_ago=200)
     await _note(session, alert, days_ago=180, status=NotificationStatus.pending)
     await session.commit()
 
-    assert await retention.purge_old_notifications(months=3) == 1
+    assert await retention.purge_old_notifications(months=3) == 0
 
 
 @pytest.mark.asyncio
@@ -151,8 +163,7 @@ async def test_recent_rows_are_kept_whatever_their_status(session):
     alert = await _alert(session, "fp-recent", days_ago=1)
     kept = [
         (await _note(session, alert, days_ago=1, status=s)).id
-        for s in (NotificationStatus.sent, NotificationStatus.failed,
-                  NotificationStatus.pending)
+        for s in (NotificationStatus.sent, NotificationStatus.failed, NotificationStatus.pending)
     ]
     await session.commit()
 
@@ -206,7 +217,10 @@ async def test_preview_counts_exactly_what_a_run_removes(session):
         await _note(session, alert, days_ago=180, status=NotificationStatus.sent)
     # Not purgeable: an in-flight retry, however old.
     await _note(
-        session, alert, days_ago=180, status=NotificationStatus.pending,
+        session,
+        alert,
+        days_ago=180,
+        status=NotificationStatus.pending,
         next_attempt_at=datetime.now(UTC) + timedelta(hours=1),
     )
     # Not purgeable: recent.

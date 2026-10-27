@@ -14,7 +14,7 @@ import httpx
 from app.config import get_settings
 from app.models import Alert
 from app.notifiers import entra
-from app.notifiers.base import DeliveryResult
+from app.notifiers.base import DeliveryResult, retry_after
 from app.notifiers.render import build_context, render_card_safe
 
 log = logging.getLogger(__name__)
@@ -63,6 +63,7 @@ async def send(
     owner_names: list[str] | None = None,
     template_source: str | None = None,
     client: httpx.AsyncClient | None = None,
+    payload: dict | None = None,
 ) -> DeliveryResult:
     settings = get_settings()
 
@@ -88,12 +89,18 @@ async def send(
         owner_names=owner_names,
     )
     try:
-        card, fallback_reason = render_card_safe(context, template_source)
+        card, fallback_reason = (
+            (payload, None) if payload is not None else render_card_safe(context, template_source)
+        )
     except Exception as exc:  # noqa: BLE001
         # Even the built-in template failed. Not retryable -- a retry would
         # render the same broken thing -- so report it and stop.
         return DeliveryResult(ok=False, error=f"render failed: {exc}")
 
+    # Internal digest membership belongs in DB, not the Adaptive Card schema.
+    card = {
+        key: value for key, value in card.items() if key not in {"opstrail_digest", "delivery_ids"}
+    }
     owns_client = client is None
     client = client or httpx.AsyncClient(timeout=settings.dispatch_timeout_seconds)
     started = time.perf_counter()
@@ -109,8 +116,7 @@ async def send(
         # the next token, so spend one extra round trip here rather than
         # making the alert wait out the dispatch backoff.
         if resp.status_code in (401, 403) and get_settings().msteams_auth == "entra":
-            log.info("msteams: %s from flow, refreshing token and retrying once",
-                     resp.status_code)
+            log.info("msteams: %s from flow, refreshing token and retrying once", resp.status_code)
             entra.invalidate()
             retry_headers, retry_note = await _auth_headers(client)
             if not retry_note:
@@ -127,6 +133,7 @@ async def send(
             resp.status_code,
             elapsed,
             f"MS Teams returned {resp.status_code}: {resp.text[:500]}",
+            retry_after_seconds=retry_after(resp),
         )
     except httpx.HTTPError as exc:
         elapsed = (time.perf_counter() - started) * 1000

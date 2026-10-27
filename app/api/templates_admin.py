@@ -306,7 +306,7 @@ async def preview(
     id: OptInt = Form(None),
     sample: bool = Form(False),
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_role(UserRole.editor)),
 ):
     """Render without saving.
 

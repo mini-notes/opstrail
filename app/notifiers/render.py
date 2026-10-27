@@ -18,7 +18,8 @@ import logging
 from pathlib import Path
 from urllib.parse import quote
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+from jinja2 import FileSystemLoader, StrictUndefined, nodes, select_autoescape
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from app.models import Alert
 from app.services import severity as severity_mod
@@ -28,7 +29,31 @@ log = logging.getLogger(__name__)
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 BUILTIN_TEMPLATE = "msteams/default.json.j2"
 
-_env = Environment(
+
+class CardEnvironment(ImmutableSandboxedEnvironment):
+    intercepted_binops = frozenset({"*", "**"})
+
+    def call_binop(self, context, operator, left, right):
+        if operator == "*":
+            for value, times in ((left, right), (right, left)):
+                if isinstance(value, (str, list, tuple)) and isinstance(times, int):
+                    if len(value) * max(times, 0) > 262_144:
+                        raise ValueError("template result limit exceeded")
+        if operator == "**":
+            raise ValueError("exponentiation is disabled in card templates")
+        if isinstance(left, (str, list, tuple)) and isinstance(right, int) and right > 100:
+            raise ValueError("template repetition limit exceeded")
+        if isinstance(right, (str, list, tuple)) and isinstance(left, int) and left > 100:
+            raise ValueError("template repetition limit exceeded")
+        return super().call_binop(context, operator, left, right)
+
+    def is_safe_callable(self, obj):
+        owner = getattr(obj, "__self__", None)
+        name = getattr(obj, "__name__", "")
+        return isinstance(owner, dict) and name in {"get", "items", "keys", "values"}
+
+
+_env = CardEnvironment(
     loader=FileSystemLoader(TEMPLATE_DIR),
     undefined=StrictUndefined,
     # autoescape is for HTML; these templates emit JSON and escape via
@@ -37,6 +62,9 @@ _env = Environment(
     trim_blocks=True,
     lstrip_blocks=True,
 )
+
+_env.globals.clear()
+_env.filters.pop("format", None)
 
 # Severity vocabulary seen in the wild, folded into four bands.
 #
@@ -54,14 +82,14 @@ _env = Environment(
 # Traffic-light colours: the convention a reader already knows, so the band is
 # legible before the word is read. Teams renders these inline in the FactSet.
 _SEVERITY_ICONS = {
-    "CRITICAL": "\U0001f534",   # red circle
-    "ERROR": "\U0001f7e0",      # orange circle
-    "WARNING": "\U0001f7e1",    # yellow circle
-    "INFO": "\U0001f535",       # blue circle
+    "CRITICAL": "\U0001f534",  # red circle
+    "ERROR": "\U0001f7e0",  # orange circle
+    "WARNING": "\U0001f7e1",  # yellow circle
+    "INFO": "\U0001f535",  # blue circle
 }
 _STATUS_ICONS = {
-    "FIRING": "\U0001f525",     # fire
-    "RESOLVED": "\u2705",       # check mark
+    "FIRING": "\U0001f525",  # fire
+    "RESOLVED": "\u2705",  # check mark
 }
 
 # Labels worth putting on the card, in the order an operator reads them:
@@ -72,7 +100,8 @@ _CONTEXT_LABELS = (
     ("instance", "Instance"),
     ("cluster", "Cluster"),
     ("namespace", "Namespace"),
-    ("environment", "Environment"), ("env", "Environment"),
+    ("environment", "Environment"),
+    ("env", "Environment"),
 )
 
 # Prometheus does NOT send the observed value or the threshold: the webhook
@@ -185,24 +214,36 @@ def _facts(alert: Alert, service_name: str | None) -> list:
 # both. A test asserts this list and build_context() agree, so adding a key
 # without documenting it fails the suite rather than quietly going missing.
 CONTEXT_VARS: tuple[tuple[str, str], ...] = (
-    ("alert", "Toàn bộ bản ghi: alertname, severity, summary, description, "
-              "labels, annotations, starts_at, ends_at…"),
+    (
+        "alert",
+        "Toàn bộ bản ghi: alertname, severity, summary, description, "
+        "labels, annotations, starts_at, ends_at…",
+    ),
     ("service", "Tên hiển thị của service. Rỗng nếu alert chưa gán nhãn"),
     ("team", "Tên hiển thị của team. Rỗng nếu alert chưa gán nhãn"),
-    ("severity", "Đã chuẩn hoá: CRITICAL / ERROR / WARNING / INFO. Là mức "
-                 "**sau** khi severity rule điều chỉnh, nếu có"),
-    ("severity_source", "Mức gốc Alertmanager gửi, **chỉ** có khi rule đã đổi "
-                        "nó. None nghĩa là không ai đụng tới"),
+    (
+        "severity",
+        "Đã chuẩn hoá: CRITICAL / ERROR / WARNING / INFO. Là mức "
+        "**sau** khi severity rule điều chỉnh, nếu có",
+    ),
+    (
+        "severity_source",
+        "Mức gốc Alertmanager gửi, **chỉ** có khi rule đã đổi nó. None nghĩa là không ai đụng tới",
+    ),
     ("status", "FIRING hoặc RESOLVED"),
     ("icon", "Emoji theo severity"),
     ("status_icon", "Emoji theo trạng thái"),
     ("facts", "Danh sách (tiêu đề, giá trị) đã lọc bỏ trường rỗng"),
-    ("value_line", "Ví dụ `93% (ngưỡng 85%)`. **None** nếu alerting rule "
-                   "không gửi annotation value/threshold"),
+    (
+        "value_line",
+        "Ví dụ `93% (ngưỡng 85%)`. **None** nếu alerting rule không gửi annotation value/threshold",
+    ),
     ("duration_line", "Ví dụ `Đã xử lý sau 0:42:15`. None khi alert chưa kết thúc"),
     ("owners", "Tên người phụ trách (luôn có nếu đã gán, kể cả khi không mention)"),
-    ("mention_entities", "Khối msteams.entities. Rỗng nếu chưa đạt ngưỡng "
-                         "severity hoặc chưa có owner"),
+    (
+        "mention_entities",
+        "Khối msteams.entities. Rỗng nếu chưa đạt ngưỡng severity hoặc chưa có owner",
+    ),
     ("mention_text", "Chuỗi <at>Tên</at> khớp với entities. Rỗng khi không mention"),
     ("generator_url", "Link đồ thị Prometheus"),
     ("detail_url", "Link trang chi tiết trong OpsTrail"),
@@ -255,7 +296,44 @@ def build_context(
 
 def render_source(source: str, context: dict) -> dict:
     """Render template text and parse it. Raises ValueError on bad JSON."""
-    rendered = _env.from_string(source).render(**context)
+    if len(source.encode()) > 32_768:
+        raise ValueError("template exceeds 32 KiB")
+    # Never expose SQLAlchemy objects (and their methods/session) to templates.
+    context = dict(context)
+    alert = context.get("alert")
+    if isinstance(alert, Alert):
+        context["alert"] = {
+            column.key: getattr(alert, column.key) for column in Alert.__table__.columns
+        }
+    tree = _env.parse(source)
+    for loop in tree.find_all(nodes.For):
+        if loop.recursive or any(loop.find_all(nodes.For)):
+            raise ValueError("nested or recursive loops are disabled")
+    if any(
+        tree.find_all(
+            (
+                nodes.Macro,
+                nodes.Import,
+                nodes.Include,
+                nodes.Extends,
+                nodes.FromImport,
+                nodes.CallBlock,
+            )
+        )
+    ):
+        raise ValueError("template composition is disabled")
+    if len(json.dumps(context, default=str).encode()) > 262_144:
+        raise ValueError("template context exceeds 256 KiB")
+    parts = []
+    total = 0
+    for part in _env.from_string(source).generate(**context):
+        total += len(part.encode())
+        if total > 262_144:
+            raise ValueError("rendered card exceeds 256 KiB")
+        parts.append(part)
+    rendered = "".join(parts)
+    if len(rendered.encode()) > 262_144:
+        raise ValueError("rendered card exceeds 256 KiB")
     try:
         return json.loads(rendered)
     except json.JSONDecodeError as exc:

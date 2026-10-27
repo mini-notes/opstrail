@@ -10,7 +10,7 @@ idempotently, so it is rejected loudly rather than silently duplicated.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 
 class AlertmanagerAlert(BaseModel):
@@ -19,8 +19,8 @@ class AlertmanagerAlert(BaseModel):
     status: str
     labels: dict[str, str] = Field(default_factory=dict)
     annotations: dict[str, str] = Field(default_factory=dict)
-    startsAt: datetime  # noqa: N815 - wire format is camelCase
-    endsAt: datetime | None = None  # noqa: N815
+    startsAt: AwareDatetime  # noqa: N815 - wire format is camelCase
+    endsAt: AwareDatetime | None = None  # noqa: N815
     generatorURL: str | None = None  # noqa: N815
     fingerprint: str
 

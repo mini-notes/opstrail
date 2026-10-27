@@ -1,6 +1,23 @@
 {% extends "ui/base.html" %}
 {% set active = 'deliveries' %}
-{% block title %}Delivery {{ note.id }} · OpsTrail{% endblock %}
+{% block title %}Delivery {{ note.id }} · OpsTrail{% if note.digest_parent_id %}
+<section class="card">
+  <p>Sự kiện này được gửi trong <a href="/deliveries/{{ note.digest_parent_id }}">bản tổng hợp #{{ note.digest_parent_id }}</a>.</p>
+</section>
+{% endif %}
+{% if note.event_snapshot %}
+<section class="card">
+  <h2>Event snapshot</h2>
+  <pre style="max-height:320px;overflow:auto">{{ note.event_snapshot | tojson(indent=2) }}</pre>
+</section>
+{% endif %}
+{% if note.payload %}
+<section class="card">
+  <h2>Payload đã lưu (dùng lại khi retry)</h2>
+  <pre style="max-height:420px;overflow:auto">{{ note.payload | tojson(indent=2) }}</pre>
+</section>
+{% endif %}
+{% endblock %}
 {% block content %}
 <p><a class="link" href="/deliveries">← Deliveries</a></p>
 
@@ -71,4 +88,21 @@
     <p class="muted">Không có lỗi nào được ghi.</p>
   {% endif %}
 </section>
+{% if note.digest_parent_id %}
+<section class="card">
+  <p>Sự kiện này được gửi trong <a href="/deliveries/{{ note.digest_parent_id }}">bản tổng hợp #{{ note.digest_parent_id }}</a>.</p>
+</section>
+{% endif %}
+{% if note.event_snapshot %}
+<section class="card">
+  <h2>Event snapshot</h2>
+  <pre style="max-height:320px;overflow:auto">{{ note.event_snapshot | tojson(indent=2) }}</pre>
+</section>
+{% endif %}
+{% if note.payload %}
+<section class="card">
+  <h2>Payload đã lưu (dùng lại khi retry)</h2>
+  <pre style="max-height:420px;overflow:auto">{{ note.payload | tojson(indent=2) }}</pre>
+</section>
+{% endif %}
 {% endblock %}

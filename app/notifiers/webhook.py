@@ -13,7 +13,7 @@ import httpx
 
 from app.config import get_settings
 from app.models import Alert
-from app.notifiers.base import DeliveryResult
+from app.notifiers.base import DeliveryResult, retry_after
 from app.notifiers.render import band_severity
 
 log = logging.getLogger(__name__)
@@ -55,9 +55,14 @@ async def send(
     service_name: str | None = None,
     team_name: str | None = None,
     client: httpx.AsyncClient | None = None,
+    payload: dict | None = None,
 ) -> DeliveryResult:
     settings = get_settings()
-    payload = build_envelope(alert, service_name=service_name, team_name=team_name)
+    payload = (
+        payload
+        if payload is not None
+        else build_envelope(alert, service_name=service_name, team_name=team_name)
+    )
     headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     owns_client = client is None
@@ -73,6 +78,7 @@ async def send(
             resp.status_code,
             elapsed,
             f"webhook returned {resp.status_code}: {resp.text[:500]}",
+            retry_after_seconds=retry_after(resp),
         )
     except httpx.HTTPError as exc:
         elapsed = (time.perf_counter() - started) * 1000

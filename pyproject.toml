@@ -14,9 +14,9 @@ dependencies = [
     # 1.16 for `if_not_exists=` on create_index, used by the acknowledgement
     # migration. An older Alembic raises TypeError there rather than skipping.
     "alembic>=1.16",
-    "jinja2>=3.1",
+    "jinja2>=3.1.6,<4",
     "httpx>=0.28",
-    "apscheduler>=3.10",
+    "apscheduler>=3.10,<4",
     # The zone severity_rules windows are read in comes from ZoneInfo, which
     # reads /usr/share/zoneinfo. python:3.13-slim happens to ship it today;
     # depending on that is a runtime failure deep inside rule evaluation the
@@ -64,4 +64,4 @@ build-backend = "setuptools.build_meta"
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["templates/**/*"]
+app = ["templates/**/*", "static/**/*"]

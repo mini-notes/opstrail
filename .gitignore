@@ -17,3 +17,9 @@ data/
 .DS_Store
 .idea/
 .vscode/
+
+# Production credentials, backups and load-test outputs
+.env.production
+.env.backup
+backups/
+load-results/

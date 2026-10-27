@@ -5,6 +5,7 @@ from app.models.core import (
     LabelRule,
     MessageTemplate,
     Notification,
+    OutboundTarget,
     Owner,
     Service,
     ServiceOwner,
@@ -13,6 +14,7 @@ from app.models.core import (
     TeamOwner,
     TemplateRule,
     User,
+    WorkerState,
 )
 from app.models.enums import (
     AlertStatus,
@@ -35,6 +37,8 @@ __all__ = [
     "MessageTemplate",
     "TemplateRule",
     "Notification",
+    "OutboundTarget",
+    "WorkerState",
     "NotificationChannel",
     "NotificationStatus",
     "Owner",

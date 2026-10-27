@@ -4,6 +4,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
@@ -13,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.api import (
     auth,
     labels,
+    ops,
     owners,
     retention_admin,
     severity_admin,
@@ -32,6 +34,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 log = logging.getLogger("opstrail")
 
 # Known-weak values that appear in the repository: app/config.py defaults,
@@ -50,6 +55,7 @@ PUBLISHED_TOKENS = frozenset({"dev-intake-token", "change-me"})
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    settings.validate_runtime()
     if settings.msteams_enabled and not settings.msteams_power_automate_url:
         log.warning(
             "MSTEAMS_ENABLED is on but MSTEAMS_POWER_AUTOMATE_URL is empty -- "
@@ -86,16 +92,18 @@ async def lifespan(app: FastAPI):
         )
     elif mode == "entra":
         missing = [
-            name for name, value in (
+            name
+            for name, value in (
                 ("ENTRA_CLIENT_ID", settings.entra_client_id),
                 ("ENTRA_CLIENT_SECRET", settings.entra_client_secret),
                 ("ENTRA_TENANT_ID", settings.entra_tenant_id or settings.entra_token_url),
-            ) if not value
+            )
+            if not value
         ]
         if missing:
             log.warning(
-                "MSTEAMS_AUTH=entra but %s not set -- cards will be sent "
-                "without credentials.", ", ".join(missing),
+                "MSTEAMS_AUTH=entra but %s not set -- cards will be sent without credentials.",
+                ", ".join(missing),
             )
     elif mode not in ("none", "bearer", "entra"):
         log.warning("MSTEAMS_AUTH=%r is not a known mode; treating as none", mode)
@@ -108,32 +116,28 @@ async def lifespan(app: FastAPI):
             "NOTIFICATION_RETENTION_MONTHS=%d is not shorter than "
             "ALERT_RETENTION_MONTHS=%d -- delivery records are already removed "
             "with their alert, so the setting has no effect.",
-            settings.notification_retention_months, settings.alert_retention_months,
+            settings.notification_retention_months,
+            settings.alert_retention_months,
         )
 
-    sweeper = asyncio.create_task(dispatch.dispatch_loop())
-    # Separate from the dispatch sweeper and much slower: this one exists so
-    # a severity window that opens while an alert is already firing takes
-    # effect within a minute instead of waiting for Alertmanager's next
-    # repeat, which is typically hours away.
-    severity_sweeper = asyncio.create_task(severity_rules.reevaluate_loop())
-    scheduler = build_scheduler()
-    scheduler.start()
+    tasks = []
+    scheduler = None
+    if settings.run_background_tasks:
+        tasks = [
+            asyncio.create_task(dispatch.dispatch_loop()),
+            asyncio.create_task(severity_rules.reevaluate_loop()),
+        ]
+        scheduler = build_scheduler()
+        scheduler.start()
     log.info("%s started", settings.app_name)
     try:
         yield
     finally:
-        scheduler.shutdown(wait=False)
-        # Both are cancelled and both are awaited: cancel() only asks, and a
-        # task that is never awaited can still be mid-transaction when the
-        # process exits.
-        for task in (sweeper, severity_sweeper):
+        if scheduler:
+            scheduler.shutdown(wait=False)
+        for task in tasks:
             task.cancel()
-        for task in (sweeper, severity_sweeper):
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 app = FastAPI(title="OpsTrail", version="0.1.0", lifespan=lifespan)
@@ -155,6 +159,7 @@ app.mount(
     name="static",
 )
 
+app.include_router(ops.router)
 app.include_router(webhooks.router)
 app.include_router(auth.router)
 app.include_router(stats.router)
@@ -183,3 +188,21 @@ async def _redirect_to_login(request: Request, exc: NotAuthenticated):
 @app.get("/healthz", tags=["ops"])
 async def healthz() -> dict:
     return {"status": "ok"}
+
+
+@app.middleware("http")
+async def verify_browser_origin(request: Request, call_next):
+    # Machine intake uses bearer auth. Browser form mutations in production
+    # must originate from the configured console, including login/logout.
+    if (
+        _settings.environment == "production"
+        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and not request.url.path.startswith("/api/v1/webhooks/")
+    ):
+        from fastapi.responses import JSONResponse
+
+        origin = request.headers.get("origin") or request.headers.get("referer", "")
+        expected, actual = urlsplit(_settings.public_host), urlsplit(origin)
+        if (actual.scheme, actual.netloc) != (expected.scheme, expected.netloc):
+            return JSONResponse({"detail": "invalid browser origin"}, status_code=403)
+    return await call_next(request)
