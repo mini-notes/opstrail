@@ -3,8 +3,7 @@
 Two windows, because the two kinds of record age out at different speeds.
 An alert is the record of what happened; a delivery is debugging data for
 "did it go out", which is asked within days and is the bulkier of the two
-(one row per channel per attempt, and a failed custom template puts its whole
-rendered output in `last_error`).
+(one row per channel/event, with the latest attempt result and snapshot).
 
 Deletes in bounded batches rather than one statement: a single
 `DELETE FROM alerts WHERE starts_at < ...` over months of history takes a
@@ -15,14 +14,15 @@ intake is never blocked behind the purge.
 notification window only does anything while it is SHORTER than the alert
 window; app/main.py warns at startup when it is not.
 
-If volume ever exceeds roughly 100k alerts/month, convert `alerts` to monthly
-partitions and swap this for DROP PARTITION, which is O(1).
+Partition only after measuring query/purge/vacuum cost and checking unique
+constraint compatibility; volume alone is not a partitioning requirement.
 """
 
 import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy.orm import aliased
 
 from app.config import get_settings
 from app.db import SessionLocal
@@ -158,13 +158,17 @@ async def preview() -> dict:
 
 
 def _alert_purgeable(cutoff):
+    child = aliased(Notification)
     return and_(
         Alert.status == "resolved",
         func.coalesce(Alert.ends_at, Alert.updated_at) < cutoff,
         ~select(Notification.id)
         .where(
             Notification.alert_id == Alert.id,
-            Notification.status == NotificationStatus.pending,
+            or_(
+                Notification.status == NotificationStatus.pending,
+                select(child.id).where(child.digest_parent_id == Notification.id).exists(),
+            ),
         )
         .exists(),
     )
@@ -173,7 +177,14 @@ def _alert_purgeable(cutoff):
 def _purgeable(cutoff: datetime):
     # Only the dispatcher can end a pending delivery. Retention must never
     # infer that an overdue retry is dead and silently discard it.
-    return and_(Notification.created_at < cutoff, Notification.status != NotificationStatus.pending)
+    child = aliased(Notification)
+    # Delete members first. Keep the parent while any member still links to
+    # its snapshot, including members with a later retention cutoff.
+    return and_(
+        Notification.created_at < cutoff,
+        Notification.status != NotificationStatus.pending,
+        ~select(child.id).where(child.digest_parent_id == Notification.id).exists(),
+    )
 
 
 async def purge_old_notifications(months: int | None = None) -> int:

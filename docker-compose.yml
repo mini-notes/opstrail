@@ -84,10 +84,11 @@ services:
       # empty string must stay empty. An empty AUTH_SCHEME means "send the
       # token with no prefix", and an empty credential should reach the
       # startup check rather than being quietly replaced by a default.
-      # Retry behaviour. Age is the real bound -- an attempt budget turns
-      # into a ~30s tolerance once backoff is applied. Exposed here because
-      # reproducing a give-up by hand otherwise means waiting an hour.
-      DISPATCH_GIVE_UP_AFTER_MINUTES: ${DISPATCH_GIVE_UP_AFTER_MINUTES-60}
+      # Durable worker retry window and age-based digest policy.
+      BACKLOG_RETENTION_HOURS: ${BACKLOG_RETENTION_HOURS-168}
+      BACKLOG_DIGEST_AFTER_SECONDS: ${BACKLOG_DIGEST_AFTER_SECONDS-300}
+      BACKLOG_DIGEST_MAX_EVENTS: ${BACKLOG_DIGEST_MAX_EVENTS-100}
+      DISPATCH_TARGET_INTERVAL_SECONDS: ${DISPATCH_TARGET_INTERVAL_SECONDS-1}
       DISPATCH_BASE_BACKOFF_SECONDS: ${DISPATCH_BASE_BACKOFF_SECONDS-5}
       MSTEAMS_AUTH: ${MSTEAMS_AUTH-none}
       MSTEAMS_AUTH_TOKEN: ${MSTEAMS_AUTH_TOKEN-}

@@ -9,6 +9,12 @@ Không AI, không on-call. Phase 1.
 
 ---
 
+## Triển khai nội bộ
+
+Dùng [runbook Docker Compose production](docs/operations.md) để chạy API/worker riêng,
+migration trước rollout, giám sát, backup/restore và pilot. Stack dưới đây dành
+cho development/demo. Kết quả kiểm chứng: [hardening validation](docs/validation-hardening.md).
+
 ## 1. Chạy
 
 ```bash

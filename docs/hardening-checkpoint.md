@@ -1,6 +1,6 @@
 # Checkpoint — OpsTrail hardening (WIP)
 
-Paused at the user's request on 2026-10-27 (Asia/Ho_Chi_Minh). Resume in the same chat/repository. This branch is work in progress and must not be deployed yet.
+Resumed on 2026-10-28. Implementation and local validation are complete; see [validation-hardening.md](validation-hardening.md) and [operations.md](operations.md) for current status. Internal infrastructure/Teams and the 7-day pilot remain pending. The original shutdown checkpoint below is retained as historical context; its outstanding list is superseded by the validation report.
 
 ## User decisions and authorization
 

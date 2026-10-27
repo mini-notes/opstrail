@@ -8,6 +8,7 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import func, select, text
 
+from app import telemetry
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Notification, NotificationStatus, WorkerState
@@ -48,7 +49,7 @@ async def metrics(authorization: str | None = Header(default=None)):
         ).scalar_one()
         workers = (await session.execute(select(WorkerState))).scalars().all()
     now = datetime.now(UTC)
-    lines = ["# TYPE opstrail_deliveries gauge"]
+    lines = telemetry.exposition() + ["# TYPE opstrail_deliveries gauge"]
     for channel, status, count in rows:
         lines.append(
             f'opstrail_deliveries{{channel="{channel.value}",status="{status.value}"}} {count}'
@@ -63,7 +64,7 @@ async def metrics(authorization: str | None = Header(default=None)):
         # Names come only from our worker entry points, never user labels.
         if worker.name in {"dispatch", "maintenance", "retention", "backup"}:
             lines.append(
-                f'opstrail_worker_last_success_timestamp_seconds{{job="{worker.name}"}} '
+                f'opstrail_worker_last_success_timestamp_seconds{{component="{worker.name}"}} '
                 f"{worker.updated_at.timestamp()}"
             )
     return "\n".join(lines) + "\n"

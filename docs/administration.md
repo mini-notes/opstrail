@@ -92,7 +92,7 @@ lần chạy tới, và nút **Chạy ngay** (chỉ `admin`, có ghi audit log).
 [ui.md](ui.md#retention).
 
 
-Chạy 03:00 UTC hằng ngày, xoá theo batch 5000 để không giữ lock lâu.
+Chế độ demo chạy 03:00 UTC; worker production kiểm tra overdue và chạy khi lần thành công trước quá 24 giờ, kể cả sau restart. Xoá theo batch 5000; giữ firing, pending và anchor digest còn member. Xem [runbook](operations.md).
 `notifications` xoá theo cascade. Mặc định giữ **6 tháng**
 (`ALERT_RETENTION_MONTHS`, đặt `0` để tắt).
 

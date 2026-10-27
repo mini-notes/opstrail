@@ -170,7 +170,7 @@ thông tin xác thực — ai có nó là gửi được vào channel. Chỉ `ad
 ![Trang Retention](images/retention.png)
 
 Hai cửa sổ chạy mỗi ngày một lần, và trang này cho **chạy ngay** để khỏi phải
-đợi tới 03:00 rồi đi đọc log. Số "sẽ xoá ở lần chạy tới" tính bằng đúng điều
+đợi scheduler/worker chạy rồi đi đọc log. Số "sẽ xoá ở lần chạy tới" tính bằng đúng điều
 kiện mà job dùng, nên nó là con số thật chứ không phải ước lượng.
 
 Dòng **đang chờ gửi lại** không bao giờ bị xoá, dù cũ đến đâu.

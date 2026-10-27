@@ -99,9 +99,7 @@ def describe_window(window: dict | None) -> str:
         return "mọi lúc"
     days = window.get("days") or []
     when = (
-        " ".join(WEEKDAY_NAMES[d - 1] for d in sorted(days) if 1 <= d <= 7)
-        if days
-        else "mọi ngày"
+        " ".join(WEEKDAY_NAMES[d - 1] for d in sorted(days) if 1 <= d <= 7) if days else "mọi ngày"
     )
     start, end = window.get("from"), window.get("to")
     return f"{when} {start}–{end}" if start and end else when
@@ -165,7 +163,9 @@ def evaluate_against(
             # rather than allowed to blank the field.
             log.warning(
                 "severity rule %s (%s) produced nothing for severity=%r",
-                rule.id, rule.name, alert.severity,
+                rule.id,
+                rule.name,
+                alert.severity,
             )
             continue
         # First match wins, like every other rule table here.
@@ -186,9 +186,7 @@ async def evaluate(
         rules = await active_rules(session)
         if not rules:
             return None, None
-        return evaluate_against(
-            alert, rules, service=service, team=team, now=now
-        )
+        return evaluate_against(alert, rules, service=service, team=team, now=now)
     except Exception:  # noqa: BLE001
         log.exception("severity evaluation failed for alert %s", alert.id)
         return None, None
@@ -232,6 +230,7 @@ async def reevaluate_once() -> int:
                     .where(Alert.status == AlertStatus.firing)
                     .order_by(Alert.id.desc())
                     .limit(REEVALUATE_BATCH)
+                    .with_for_update(skip_locked=True)
                 )
             )
             .scalars()
@@ -239,16 +238,9 @@ async def reevaluate_once() -> int:
         )
 
         for alert in alerts:
-            service = (
-                await session.get(Service, alert.service_id)
-                if alert.service_id else None
-            )
-            team = (
-                await session.get(Team, alert.team_id) if alert.team_id else None
-            )
-            result, rule = evaluate_against(
-                alert, rules, service=service, team=team
-            )
+            service = await session.get(Service, alert.service_id) if alert.service_id else None
+            team = await session.get(Team, alert.team_id) if alert.team_id else None
+            result, rule = evaluate_against(alert, rules, service=service, team=team)
             if result == alert.effective_severity:
                 continue
 
@@ -257,8 +249,11 @@ async def reevaluate_once() -> int:
             changed += 1
 
             await audit.record(
-                session, None, "alert.severity.overridden",
-                object_type="alert", object_id=alert.id,
+                session,
+                None,
+                "alert.severity.overridden",
+                object_type="alert",
+                object_id=alert.id,
                 detail={
                     "from": before,
                     "to": alert.acting_severity,
@@ -283,8 +278,7 @@ async def reevaluate_once() -> int:
 
         if escalated:
             await dispatch.queue_for_alerts(session, escalated)
-            log.info("severity: escalated %d alert(s) past the mention "
-                     "threshold", len(escalated))
+            log.info("severity: escalated %d alert(s) past the mention threshold", len(escalated))
 
         await session.commit()
 

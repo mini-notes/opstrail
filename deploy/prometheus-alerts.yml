@@ -7,12 +7,12 @@ groups:
         labels: {severity: critical}
         annotations: {summary: 'OpsTrail metrics unavailable'}
       - alert: OpsTrailWorkerMissing
-        expr: time() - opstrail_worker_last_success_timestamp_seconds{job="dispatch"} > 60 or absent(opstrail_worker_last_success_timestamp_seconds{job="dispatch"})
+        expr: time() - opstrail_worker_last_success_timestamp_seconds{component="dispatch"} > 60 or absent(opstrail_worker_last_success_timestamp_seconds{component="dispatch"})
         for: 1m
         labels: {severity: critical}
         annotations: {summary: 'OpsTrail dispatcher heartbeat missing'}
       - alert: OpsTrailMaintenanceMissing
-        expr: time() - opstrail_worker_last_success_timestamp_seconds{job="maintenance"} > 180 or absent(opstrail_worker_last_success_timestamp_seconds{job="maintenance"})
+        expr: time() - opstrail_worker_last_success_timestamp_seconds{component="maintenance"} > 180 or absent(opstrail_worker_last_success_timestamp_seconds{component="maintenance"})
         for: 2m
         labels: {severity: warning}
         annotations: {summary: 'OpsTrail maintenance has not completed'}
@@ -26,3 +26,8 @@ groups:
         for: 1m
         labels: {severity: warning}
         annotations: {summary: 'OpsTrail has failed deliveries; inspect delivery history'}
+      - alert: OpsTrailIntakeErrors
+        expr: sum(rate(opstrail_intake_requests_total{status_class="5xx"}[5m])) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: 'OpsTrail intake is returning server errors'}

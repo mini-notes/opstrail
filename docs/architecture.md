@@ -17,14 +17,18 @@ lần 2  {"received":1,"notified":0,"queued":0}   <- repeat, im lặng
 resolved {"received":1,"notified":1,"queued":2} <- đổi trạng thái, có gửi
 ```
 
-**Lưu trước, gửi sau.** Alert được commit trước khi fan-out. Teams chết thì
-record vẫn còn, `notifications.status` cho biết chuyện gì đã xảy ra. Persist
-lỗi → trả 5xx để Alertmanager tự retry.
+**Một transaction cho alert và công việc gửi.** Intake cập nhật alert và tạo
+notification snapshot trong cùng transaction rồi mới trả 202. Teams chết thì
+cả lịch sử và công việc gửi vẫn còn. Lỗi trước commit → rollback và trả 5xx để
+Alertmanager retry. Worker gửi sau commit, dùng snapshot thay vì trạng thái
+Alert mutable.
 
-**Retry theo TUỔI, không theo số lần.** Bỏ cuộc khi notification quá
-`DISPATCH_GIVE_UP_AFTER_MINUTES` (mặc định 60), backoff mũ cap ở 5 phút. Giới
-hạn theo số lần nghe thì an toàn nhưng thực tế chỉ chịu được ~30 giây — quá
-ngắn cho một sự cố Teams thật.
+**Retry và backlog.** Worker dùng lease theo đích, backoff mũ có jitter và
+Retry-After. Cửa sổ backlog mặc định `BACKLOG_RETENTION_HOURS=168`; các setting
+DISPATCH_GIVE_UP_AFTER_MINUTES/MAX_ATTEMPTS cũ không còn điều khiển worker.
+Sự kiện chờ quá 5 phút được tổng hợp theo đích/team, nội dung và membership cố
+định qua retry. Xem [vận hành](operations.md) để biết quota, requeue và giới
+hạn đảm bảo khi crash sau khi HTTP đã được nhận.
 
 **`endsAt = 0001-01-01T00:00:00Z`** (Go zero time) được chuyển thành `NULL`.
 Lưu nguyên sẽ khiến mọi alert trông như đã resolved từ năm 1.

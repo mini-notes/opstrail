@@ -335,7 +335,10 @@ def render_source(source: str, context: dict) -> dict:
     if len(rendered.encode()) > 262_144:
         raise ValueError("rendered card exceeds 256 KiB")
     try:
-        return json.loads(rendered)
+        card = json.loads(rendered)
+        if not isinstance(card, dict):
+            raise ValueError("card template must produce a JSON object")
+        return card
     except json.JSONDecodeError as exc:
         raise ValueError(
             f"template did not produce valid JSON: {exc}\n--- output ---\n{rendered}"

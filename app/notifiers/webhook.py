@@ -56,6 +56,7 @@ async def send(
     team_name: str | None = None,
     client: httpx.AsyncClient | None = None,
     payload: dict | None = None,
+    delivery_key: str | None = None,
 ) -> DeliveryResult:
     settings = get_settings()
     payload = (
@@ -64,6 +65,9 @@ async def send(
         else build_envelope(alert, service_name=service_name, team_name=team_name)
     )
     headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    if delivery_key:
+        headers["Idempotency-Key"] = delivery_key
 
     owns_client = client is None
     client = client or httpx.AsyncClient(timeout=settings.dispatch_timeout_seconds)

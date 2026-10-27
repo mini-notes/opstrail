@@ -30,6 +30,17 @@ async def run(args):
     latencies, errors = [], []
     counters = {"requests": 0, "events": 0, "queued": 0}
     semaphore = asyncio.Semaphore(args.concurrency)
+    # Container startup is not part of the offered load. Wait for DB readiness
+    # before starting the schedule so cold-start ConnectErrors are not mixed
+    # into throughput measurements.
+    async with asyncio.timeout(30), httpx.AsyncClient(timeout=3) as probe:
+        while True:
+            try:
+                if (await probe.get(args.url.rstrip("/") + "/readyz")).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            await asyncio.sleep(0.25)
     began = time.perf_counter()
     tasks = set()
     max_lag = 0.0

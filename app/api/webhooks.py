@@ -15,6 +15,7 @@ Alertmanager is a machine client. Configure it on the receiver:
 """
 
 import logging
+import secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +36,7 @@ def require_intake_token(authorization: str | None = Header(default=None)) -> No
     if not settings.intake_token:
         return
     expected = f"Bearer {settings.intake_token}"
-    if authorization != expected:
+    if not secrets.compare_digest(authorization or "", expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid intake token")
 
 

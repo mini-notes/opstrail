@@ -64,6 +64,7 @@ async def send(
     template_source: str | None = None,
     client: httpx.AsyncClient | None = None,
     payload: dict | None = None,
+    delivery_key: str | None = None,
 ) -> DeliveryResult:
     settings = get_settings()
 
@@ -107,8 +108,10 @@ async def send(
     try:
         headers, auth_note = await _auth_headers(client)
         if auth_note:
-            log.warning("msteams: %s", auth_note)
+            log.warning("msteams: %s", auth_note.split(": ", 1)[0])
 
+        if delivery_key:
+            headers["X-OpsTrail-Delivery-Id"] = delivery_key
         resp = await client.post(target_url, json=card, headers=headers)
 
         # A token can expire between being cached and being used, and a
@@ -120,6 +123,8 @@ async def send(
             entra.invalidate()
             retry_headers, retry_note = await _auth_headers(client)
             if not retry_note:
+                if delivery_key:
+                    retry_headers["X-OpsTrail-Delivery-Id"] = delivery_key
                 resp = await client.post(target_url, json=card, headers=retry_headers)
 
         elapsed = (time.perf_counter() - started) * 1000

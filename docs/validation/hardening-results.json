@@ -1,0 +1,145 @@
+{
+  "date": "2026-10-28",
+  "benchmarks": [
+    {
+      "run_id": "06c73c354d7e",
+      "started_at": "2026-10-27T22:59:16.129343+00:00",
+      "duration_seconds": 599.9403527500108,
+      "offered_event_rate": 100,
+      "batch_size": 10,
+      "expected_alerts": 24000,
+      "expected_deliveries": 42000,
+      "concurrency": 32,
+      "requests": 6000,
+      "events": 60000,
+      "queued": 42000,
+      "errors": 0,
+      "error_samples": [],
+      "accepted_events_per_second": 100.00994219670602,
+      "request_latency_ms": {
+        "p50": 39.68166699633002,
+        "p95": 66.88045896589756,
+        "p99": 122.69183387979865
+      },
+      "max_schedule_lag_seconds": 0.1639341248665005
+    },
+    {
+      "run_id": "838dade0e9b2",
+      "started_at": "2026-10-27T23:13:19.661672+00:00",
+      "duration_seconds": 30.001748792128637,
+      "offered_event_rate": 100,
+      "batch_size": 1,
+      "expected_alerts": 3000,
+      "expected_deliveries": 3000,
+      "concurrency": 32,
+      "requests": 3000,
+      "events": 3000,
+      "queued": 3000,
+      "errors": 0,
+      "error_samples": [],
+      "accepted_events_per_second": 99.99417103269295,
+      "request_latency_ms": {
+        "p50": 10.23512496612966,
+        "p95": 104.42158300429583,
+        "p99": 340.6818341463804
+      },
+      "max_schedule_lag_seconds": 0.00783279212191701
+    },
+    {
+      "run_id": "7b5edf2d80e4",
+      "started_at": "2026-10-27T23:13:49.938072+00:00",
+      "duration_seconds": 29.30620479118079,
+      "offered_event_rate": 100,
+      "batch_size": 100,
+      "expected_alerts": 1020,
+      "expected_deliveries": 2010,
+      "concurrency": 32,
+      "requests": 30,
+      "events": 3000,
+      "queued": 2010,
+      "errors": 0,
+      "error_samples": [],
+      "accepted_events_per_second": 102.36740039784338,
+      "request_latency_ms": {
+        "p50": 317.36745894886553,
+        "p95": 394.51008406467736,
+        "p99": 397.87350012920797
+      },
+      "max_schedule_lag_seconds": 0.0145410830155015
+    }
+  ],
+  "database_reconciliation": [
+    {
+      "run_id": "06c73c354d7e",
+      "alerts": 24000,
+      "deliveries": 42000,
+      "missing_snapshots": 0,
+      "orphan_digest_members": 0
+    },
+    {
+      "run_id": "838dade0e9b2",
+      "alerts": 3000,
+      "deliveries": 3000,
+      "missing_snapshots": 0,
+      "orphan_digest_members": 0
+    },
+    {
+      "run_id": "7b5edf2d80e4",
+      "alerts": 1020,
+      "deliveries": 2010,
+      "missing_snapshots": 0,
+      "orphan_digest_members": 0
+    },
+    {
+      "run_id": "43ad3953d37a",
+      "alerts": 4,
+      "deliveries": 8,
+      "missing_snapshots": 0,
+      "orphan_digest_members": 0
+    }
+  ],
+  "backup_restore": {
+    "backup_seconds": 1.1022797080222517,
+    "restore_seconds": 1.0797460421454161,
+    "dump_bytes": 52871,
+    "source": "opstrail_migration",
+    "restored": "opstrail_drill_restore_test"
+  },
+  "tests": {
+    "passed": 383,
+    "skipped": 0,
+    "warnings": 1
+  },
+  "environment": {
+    "architecture": "aarch64",
+    "postgres": "16-alpine",
+    "api_cpus": 1,
+    "api_memory_mib": 512,
+    "worker_cpus": 1,
+    "worker_memory_mib": 512,
+    "digest_after_seconds": 5,
+    "target_interval_seconds": 0.05
+  },
+  "limitations": [
+    "Local disposable receiver; no real Teams flow.",
+    "10-minute workload predates final observability/retention changes; batch 1/100 smoke tests used final image.",
+    "First minute overlapped integration tests on a separate DB in the same Postgres container.",
+    "Cold-start benchmark without readiness gating failed and was excluded; harness now waits for readiness.",
+    "Pilot overrides accelerate recovery; production defaults remain 300-second digest window and 1-second target interval.",
+    "Small 10-alert backup drill does not establish production RTO.",
+    "7-day pilot on internal infrastructure remains pending."
+  ],
+  "final_receiver": {
+    "status": 200,
+    "attempts": 738,
+    "accepted": 719,
+    "digests": 635,
+    "duplicates": 0
+  },
+  "final_image": "sha256:dbb9d142a6b0944823ccae0358e045e74777a81ca789e64c90c352740b938cc6",
+  "final_delivery_states": {
+    "sent": 49912,
+    "pending": 0,
+    "failed": 0
+  }
+}

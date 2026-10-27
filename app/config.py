@@ -97,11 +97,9 @@ class Settings(BaseSettings):
     outbound_webhook_token: str = ""
 
     # --- dispatch ---
-    # Give up on AGE, not attempt count: a Power Automate outage or a Teams
-    # throttle lasts minutes to hours, and an attempt budget silently turns
-    # into a ~30s tolerance once backoff is applied.
+    # Deprecated compatibility fields: durable workers use BACKLOG_RETENTION_HOURS.
     dispatch_give_up_after_minutes: int = 60
-    dispatch_max_attempts: int = 50  # safety net only; age is the real bound
+    dispatch_max_attempts: int = 50
     dispatch_base_backoff_seconds: float = 5.0
     dispatch_max_backoff_seconds: float = 300.0
     dispatch_timeout_seconds: float = 15.0

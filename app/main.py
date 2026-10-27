@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -206,3 +207,19 @@ async def verify_browser_origin(request: Request, call_next):
         if (actual.scheme, actual.netloc) != (expected.scheme, expected.netloc):
             return JSONResponse({"detail": "invalid browser origin"}, status_code=403)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def measure_intake(request: Request, call_next):
+    if request.url.path != "/api/v1/webhooks/alertmanager":
+        return await call_next(request)
+    from app import telemetry
+
+    started = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        telemetry.observe(status_code, time.perf_counter() - started)

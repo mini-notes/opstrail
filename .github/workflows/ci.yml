@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.13', cache: pip, cache-dependency-path: 'requirements*.lock'}
       - run: pip install -r requirements-dev.lock && pip install --no-deps -e .
-      - run: ruff check app tests deploy/load_test.py
+      - run: ruff check app tests deploy/load_test.py deploy/pilot_sink.py deploy/verify_load.py
       - run: pytest tests/ -q
       - name: Migration upgrade, downgrade and schema drift
         run: |

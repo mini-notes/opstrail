@@ -33,7 +33,7 @@ services:
     environment:
       RUN_BACKGROUND_TASKS: 'false'
     # Publish to loopback; put the existing internal TLS proxy in front.
-    ports: ['127.0.0.1:8000:8000']
+    ports: ['${OPSTRAIL_BIND_ADDRESS:-127.0.0.1}:${OPSTRAIL_PORT:-8000}:8000']
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=4)"]
       interval: 15s

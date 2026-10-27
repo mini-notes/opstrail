@@ -2,15 +2,17 @@
 
 Why a `notifications` table instead of fire-and-forget: when Teams is down an
 operator must be able to answer "did the alert go out?" without grepping
-container logs. Each attempt is recorded with its HTTP status, duration and
-error, and a failed row carries `next_attempt_at` so the retry sweeper can
-pick it up after a restart.
+container logs. The latest attempt status/duration and attempt count are recorded. Pending
+rows carry `next_attempt_at` so retries survive restart; source event and
+rendered payload snapshots stay available for investigation.
 """
 
 import asyncio
 import hashlib
+import json
 import logging
 import random
+import socket
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -246,7 +248,9 @@ async def claim_next() -> Claim | None:
                 .where(
                     Notification.status == NotificationStatus.pending,
                     Notification.digest_parent_id.is_(None),
-                    Notification.next_attempt_at <= now,
+                    or_(
+                        Notification.next_attempt_at <= now, Notification.next_attempt_at.is_(None)
+                    ),
                 )
                 .group_by(Notification.channel, Notification.target)
                 .order_by(func.min(Notification.created_at), func.min(Notification.id))
@@ -297,7 +301,7 @@ async def claim_next() -> Claim | None:
                     .execution_options(populate_existing=True)
                 )
             ).scalar_one_or_none()
-            if note is None or note.next_attempt_at is None or note.next_attempt_at > now:
+            if note is None or (note.next_attempt_at is not None and note.next_attempt_at > now):
                 await session.execute(
                     update(OutboundTarget)
                     .where(OutboundTarget.key == key)
@@ -325,6 +329,7 @@ async def claim_next() -> Claim | None:
                                 Notification.target == note.target,
                                 Notification.scope_team_id.is_not_distinct_from(note.scope_team_id),
                                 Notification.created_at <= cutoff,
+                                Notification.payload["opstrail_digest"].as_boolean().is_not(True),
                             )
                             .order_by(Notification.created_at, Notification.id)
                             .limit(settings.backlog_digest_max_events)
@@ -336,6 +341,16 @@ async def claim_next() -> Claim | None:
                 )
                 # A single stale event still gets a digest describing its snapshot.
                 if members:
+                    while (
+                        len(members) > 1
+                        and len(
+                            json.dumps(
+                                digest_payload(members, note.channel), ensure_ascii=False
+                            ).encode()
+                        )
+                        > 24_000
+                    ):
+                        members.pop()
                     note.payload = digest_payload(members, note.channel)
                     note.payload["opstrail_digest"] = True
                     note.payload["delivery_ids"] = [n.id for n in members]
@@ -362,19 +377,28 @@ async def deliver_claim(claim: Claim, client: httpx.AsyncClient) -> bool:
         note = await session.get(Notification, claim.note_id)
         alert = await session.get(Alert, note.alert_id)
         payload, url, channel = note.payload, note.target, note.channel
+    settings = get_settings()
+    delivery_key = f"opstrail:{note.id}:{'digest' if payload.get('opstrail_digest') else 'event'}"
     try:
-        if channel is NotificationChannel.msteams:
-            result = await msteams.send(alert, url, payload=payload, client=client)
-        else:
-            result = await webhook.send(
-                alert,
-                url,
-                payload=payload,
-                client=client,
-                token=get_settings().outbound_webhook_token,
-            )
-    except Exception as exc:  # unexpected failure must not roll back earlier deliveries
-        log.exception("delivery %s failed unexpectedly", claim.note_id)
+        # HTTPX timeouts apply per operation, not to the whole auth/send sequence.
+        # A wall-clock bound keeps in-flight work strictly inside its lease.
+        async with asyncio.timeout(settings.dispatch_timeout_seconds * 3):
+            if channel is NotificationChannel.msteams:
+                result = await msteams.send(
+                    alert, url, payload=payload, client=client, delivery_key=delivery_key
+                )
+            else:
+                result = await webhook.send(
+                    alert,
+                    url,
+                    payload=payload,
+                    client=client,
+                    token=settings.outbound_webhook_token,
+                    delivery_key=delivery_key,
+                )
+    except Exception as exc:
+        # Do not emit exception text/traceback: an outbound exception can contain a secret URL.
+        log.warning("delivery %s failed (%s)", claim.note_id, type(exc).__name__)
         result = DeliveryResult(False, error=type(exc).__name__)
     async with SessionLocal() as session, session.begin():
         target = (
@@ -400,9 +424,15 @@ async def deliver_claim(claim: Claim, client: httpx.AsyncClient) -> bool:
         if result.ok:
             note.status, note.sent_at = NotificationStatus.sent, _now()
             note.next_attempt_at = None
+            affected_alerts = select(Notification.alert_id).where(
+                or_(
+                    Notification.id == note.id,
+                    Notification.digest_parent_id == note.id,
+                )
+            )
             await session.execute(
                 update(Alert)
-                .where(Alert.id == note.alert_id)
+                .where(Alert.id.in_(affected_alerts))
                 .values(notify_count=Alert.notify_count + 1)
             )
             await session.execute(
@@ -470,6 +500,7 @@ async def dispatch_loop(interval_seconds: float = 1.0) -> None:
     async def pulse():
         while True:
             await heartbeat()
+            await heartbeat(f"dispatch:{socket.gethostname()[:40]}")
             await asyncio.sleep(10)
 
     tasks = [asyncio.create_task(lane()) for _ in range(get_settings().dispatch_concurrency)]
